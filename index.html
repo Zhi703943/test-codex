@@ -1,1 +1,51 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Upelf · 亚马逊运营工作台</title><link rel="stylesheet" href="./public/style.css"></head><body><aside><a class="brand" href="./index.html">upelf<span>OPERATIONS STUDIO</span></a><div class="workspace">U <span>品牌运营空间<small>工厂 · 品牌 · 分销</small></span></div><p class="nav-label">工作空间</p><nav id="nav"></nav><div class="side-note"><span class="dot"></span> 本地工作台<small>数据保存在当前浏览器<br>请定期导出备份</small><button id="backup">导出工作空间</button><label class="restore">恢复备份<input id="restore" type="file" accept="application/json" hidden></label></div></aside><main><header><span>工作空间 <b>/</b> <span id="breadcrumb">运营总览</span></span><span class="pill">Amazon US · CA 规划中</span></header><div id="app"></div><div id="toast" role="status"></div></main><script defer src="./public/domain.js"></script><script defer src="./public/app.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>亚马逊运营工作台</title>
+    <link rel="stylesheet" href="./public/style.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23153f31'/%3E%3Ctext x='7' y='24' font-size='24' fill='white'%3EA%3C/text%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <aside>
+      <a class="brand" href="./index.html"
+        >AMZ<span>OPERATIONS WORKSPACE</span></a
+      >
+      <div class="workspace">
+        ◎ <span>亚马逊运营工作台<small>多店铺 · 多品牌 · 多站点</small></span>
+      </div>
+      <p class="nav-label">运营工作流</p>
+      <nav id="nav"></nav>
+      <div class="side-note">
+        <span class="dot"></span> 纯前端 · 本地存储<small
+          >原始文件与业务数据仅存当前浏览器<br />请定期导出包含原文件的备份</small
+        ><button id="backup">导出完整工作空间</button
+        ><label class="restore"
+          >恢复备份<input
+            id="restore"
+            type="file"
+            accept="application/json"
+            hidden
+        /></label>
+      </div>
+    </aside>
+    <main>
+      <header>
+        <span>工作空间 <b>/</b> <span id="breadcrumb">收集表格</span></span
+        ><span class="pill">原始报表 → 证据 → 运营动作</span>
+      </header>
+      <div id="app"><div class="empty">正在读取本地工作空间…</div></div>
+      <div id="toast" role="status"></div>
+    </main>
+    <script defer src="./public/vendor/exceljs.min.js"></script>
+    <script defer src="./public/vendor/jszip.min.js"></script>
+    <script defer src="./public/report-engine.js"></script>
+    <script defer src="./public/seed.js"></script>
+    <script defer src="./public/storage.js"></script>
+    <script defer src="./public/app.js"></script>
+  </body>
+</html>

@@ -1,34 +1,1611 @@
 (() => {
-'use strict';
-const {fields,importCSV,metrics,csv,windowDates,groupTerms} = globalThis.UpelfDomain;
-const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const initial={version:1,rows:[],imports:[],mappings:{},decisions:{},actions:[],events:[]};let state;try{state=JSON.parse(localStorage.getItem('upelf-v1'))||structuredClone(initial);}catch{state=structuredClone(initial);}let page='overview';
-const nav=[['overview','◫','运营总览'],['products','▧','产品与变体'],['reports','⇅','报表数据中心'],['terms','⌕','搜索词执行表'],['decisions','◎','决策与验证'],['events','◷','运营事件簿']];
-const today=new Date().toISOString().slice(0,10);let end=new Date(Date.now()-86400000).toISOString().slice(0,10),scope='';
-const save=()=>{try{localStorage.setItem('upelf-v1',JSON.stringify(state));return true;}catch{toast('保存失败：浏览器存储空间不足，请先导出备份。');return false;}};
-function toast(t){$('#toast').textContent=t;$('#toast').style.display='block';setTimeout(()=>$('#toast').style.display='none',6000);}
-function download(name,text,type='text/csv;charset=utf-8'){const u=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
-const fmt=(v,kind='number')=>v==null?'—':kind==='pct'?(v*100).toFixed(2)+'%':kind==='money'?'$'+v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):v.toLocaleString('en-US',{maximumFractionDigits:2});
-const scopeKey=r=>JSON.stringify([r.店铺,r.站点,r.广告类型,r.归因口径]);
-function scoped(){return state.rows.filter(r=>scopeKey(r)===scope);}
-function current(){const w=windowDates(end);return scoped().filter(r=>r.日期>=w.start&&r.日期<=end);}
-function scopeControls(){const keys=[...new Set(state.rows.map(scopeKey))];if(!keys.includes(scope))scope=keys[0]||'';return `<div class="toolbar"><label>分析截止日 <input id="end" type="date" max="${end<today?today:end}" value="${end}"></label><select id="scope"><option value="">请选择分析范围</option>${keys.map(k=>`<option value="${esc(k)}" ${k===scope?'selected':''}>${esc(JSON.parse(k).join(' / '))}</option>`).join('')}</select><span class="tag">最近 14 天 · 订单口径</span></div>`;}
-function top(title,sub,action=''){return `<div class="topline"><div><div class="eyebrow">UPELF / OPERATIONS</div><h1>${title}</h1><p>${sub}</p></div>${action}</div>`;}
-function head(title,sub=''){return `<div class="card-head"><h2>${title}</h2><small>${sub}</small></div>`;}
-function render(){document.title=nav.find(x=>x[0]===page)[2]+' · Upelf';$('#nav').innerHTML=nav.map(([id,icon,title])=>`<button data-page="${id}" class="${id===page?'active':''}"><span>${icon}</span>${title}</button>`).join('');$('#breadcrumb').textContent=nav.find(x=>x[0]===page)[2];$('#app').innerHTML=({overview,products,reports,terms,decisions,events}[page])()+`<div class="foot"><span>UPELF OPERATIONS STUDIO</span><span>让每一次调整，都有证据可循。</span></div>`;bind();}
-function overview(){const controls=scopeControls(),m=metrics(current()),w=windowDates(end);return top('运营总览','从产品出发，用证据连接流量、转化与运营动作。','<button class="primary" data-page="reports">＋ 导入运营报表</button>')+`<div class="banner"><span class="icon">◈</span><div><strong>${state.rows.length?'已导入报表 · 请检查覆盖与归因口径':'工作台已就绪，等待第一份运营报表'}</strong><p>产品知识已建立。所有历史讨论均标记为历史记录，不作为当前经营数据。</p></div><span class="tag">事实与判断分开</span></div>${controls}<div class="stats">${[['广告销售额',m.sales,'money'],['广告花费',m.spend,'money'],['广告 ACOS',m.acos,'pct'],['广告 CVR',m.cvr,'pct']].map(([l,v,k])=>`<div class="stat"><label>${l}</label><div class="value">${fmt(v,k)}</div><small>${v==null?'暂无完整数据 · 不填充为 0':`${w.start} — ${w.end}`}</small></div>`).join('')}</div><div class="grid"><section class="card objective"><div class="eyebrow">OUR NORTH STAR</div><h2>大词稳定卡位<br>其他精准词扩量 ↗</h2><p>逐步提高自然流量和自然订单，减少对广告的过度依赖。没有自然排名数据时，不推断自然排名；没有同口径总销售额时，不计算 TACOS。</p><div class="steps"><span>01 识别变化</span><span>02 核对证据</span><span>03 执行动作</span><span>04 回看验证</span></div></section><section class="card">${head('本周工作路径','每 7 天更新')}<div class="task"><span class="num">01</span><div><strong>补齐最新 14 天报表</strong><p>核对站点、广告类型与归因完整性</p></div></div><div class="task"><span class="num">02</span><div><strong>审查搜索词，落实到广告组</strong><p>保留原始目标、实际搜索词和匹配方式</p></div></div><div class="task"><span class="num">03</span><div><strong>记录调整，并安排后续验证</strong><p>同时检查促销、库存、变体与评分变化</p></div></div></section></div><section class="card">${head('核心词观察清单','自然排名：未提供')}<div class="table-wrap"><table><thead><tr><th>关键词</th><th>策略定位</th><th>当前证据</th><th>下一步</th></tr></thead><tbody>${['ice packs for lunch boxes','lunch box ice packs','ice pack for lunch box'].map(k=>`<tr><td><span class="color-dot"></span>${k}</td><td>核心大词 · 稳定卡位</td><td><span class="tag amber">待核实最新表现</span></td><td>导入搜索词报表并对比窗口</td></tr>`).join('')}</tbody></table></div></section>`;}
-const productData=[{name:'午餐盒吸水型冰袋',tag:'核心产品线',spec:['4 件装 · 每片 2 × 3 格 / 6 格','约 6 × 4 × 0.7 英寸','春亚纺外层 · 热压凹陷分格','首次吸水激活 · 可重复冷冻'],scene:'儿童 / 成人午餐包、野餐、露营',position:'Slim · Lightweight · Space-saving · Segmented · Reusable',limit:'主要沿热压线弯折，不能表现单片完整包裹整瓶饮料。不得宣称比所有竞品更薄、更软或保冷更久。顾客曾反馈保冷不足、激活不清晰、偏小、变薄。恢复吸水操作以正式说明书为准。',history:'曾讨论售价 $9.98、毛利约 37%；混色 4.0 分、其他颜色合并父体 3.8 分。均待核实。2026 年 10 月初曾讨论混色并入父体，实际日期待确认。'}, {name:'冷藏箱 / 运输保冷',tag:'在售与新品方向',spec:['B0FJF952BF：曾讨论约 4.3 × 7.3 英寸','B0FJF7LW3T：数量变体待确认','新方向：9 × 11 × 0.7 英寸 · 2 件装','新方向：每片 4 × 5 格 / 20 格'],scene:'冷藏箱、露营、运输保冷',position:'首次水激活 · 分格结构适应箱内空间',limit:'新方向不等于已上市规格，实际保冷性能需测试支持。',history:'数量变体及 ASIN 对应关系待确认。'}, {name:'冷热敷外袋 + 冰袋模块',tag:'产品开发',spec:['两片模块 + 布套 · 每片 2 × 6 格','主体 14 × 37 cm · 上绑带 38 × 4 cm','附件绑带 60 × 4 cm · 总长约 75 cm','蓝色外层 · 黑色莱卡接触面 / 魔术贴'],scene:'优先：膝盖、手肘、脚踝；辅助：脖子、头部、腰部',position:'厚实防起球布套 · 无弹力绑带 · 额外长绑带',limit:'环状存在开口，非完全闭环。历史说明涉及冷冻 4 小时、分次微波、先解冻、不可直接接触皮肤；具体参数与适用人群必须以验证后的正式说明书为准，不扩展医疗效果。',history:'产品 ¥28，头程 ¥1，FBA $4，币种不同且成本口径待核实。'}, {name:'一次性手部取暖产品',tag:'季节性产品',spec:['ASIN：B0FRFJCHRM','历史目标：20 单 / 天','关键词参考：西柚导出 HotHands 数据','推广：避免初期正面对抗品牌流量'],scene:'取暖场景，适用范围待正式资料确认',position:'持久方向 · 未验证不写具体时长',limit:'品牌词流量不能仅因点击大就认定值得投放，需核对意图、成本和转化。',history:'产品 ¥7，头程 ¥10，FBA $6.35，利润分析须补充汇率与售价。'}];
-const asins=['B0DPH2XNYH','B0G13CGMVP','B0G112DPJ9','B0GX147H5R','B0GX1482NB','B0GX137HBJ','B0GX14WJ8F','B0FJF952BF','B0FJF7LW3T','B0FRFJCHRM'];
-function products(){return top('产品与变体','品牌知识底座 · 历史讨论记录，当前规格与关系请核实')+`<div class="product-grid">${productData.map(p=>`<section class="card"><div class="card-head"><h2>${p.name}</h2><span class="tag amber">${p.tag}</span></div><div class="facts">${p.spec.map(s=>`<span>${s}</span>`).join('')}</div><p><b>使用场景</b>　${p.scene}</p><p><b>定位方向</b>　${p.position}</p><details><summary>产品限制与历史经营记录</summary><p>${p.limit}</p><div class="alert">历史记录：${p.history}</div></details></section>`).join('')}</div><section class="card" style="margin-top:22px">${head('可编辑 ASIN 映射','空白表示待确认，绝不自动猜测')}<p class="note">历史颜色：蓝色、黑色、豆绿色、紫色（RGB 222, 160, 245）。混色 B0G13CGMVP 与历史父体 B0GX14WJ8F 的当前关系仍须核实。</p><div class="table-wrap"><table><thead><tr><th>ASIN</th><th>颜色 / 数量变体</th><th>店铺</th><th>当前父体</th><th>核实状态</th></tr></thead><tbody>${asins.map(a=>{const m=state.mappings[a]||{};return `<tr><td>${a}${a==='B0G13CGMVP'?'<small>历史：混色款</small>':a==='B0GX14WJ8F'?'<small>历史：父体</small>':''}</td>${['variant','store','parent'].map(k=>`<td><input aria-label="${a} ${k}" data-map="${a}" data-field="${k}" value="${esc(m[k])}" placeholder="待确认"></td>`).join('')}<td><select data-map="${a}" data-field="status"><option>待核实</option><option ${m.status==='已核实'?'selected':''}>已核实</option></select></td></tr>`;}).join('')}</tbody></table></div></section>`;}
-function reports(){const controls=scopeControls(),w=windowDates(end),rows=current(),dates=new Set(rows.map(r=>r.日期));return top('报表数据中心','先统一范围与归因，再比较表现。原始数据只在当前浏览器保存。')+`<section class="card">${head('导入标准搜索词明细','CSV · UTF-8')}<p class="note">当前支持标准模板，不会猜测 Amazon 不同报表的列含义。请将原报告映射至模板；保留真实日期、广告类型和归因口径。缺失数值留空，花费和销售额使用美元，不添加货币符号。日期为报表统计日；不要混入汇总行或位置汇总行。</p><div class="toolbar"><button id="template">↓ 下载 CSV 模板</button><label class="button primary">选择 CSV 文件<input type="file" id="import" accept=".csv,text/csv" hidden></label><button id="clear">清除已导入报表</button></div><div class="alert">每次导入会替换现有报表，避免重复累计。请一次导入需要对比的完整期间。导入成功不等于归因已完整；最新日期的广告订单可能仍回补。</div></section><section class="card" style="margin-top:22px">${head('数据覆盖与窗口检查')}${controls}<div class="facts"><span>本次窗口：${w.start} 至 ${w.end}</span><span>前期窗口：${w.previousStart} 至 ${w.previousEnd}</span><span>当前窗口有记录日期：${dates.size} / 14 天</span><span>最近导入：${esc(state.imports.at(-1)?.at||'尚未导入')}</span></div><p class="note">无记录日期不能自动视为零投放日。每周滚动 14 天与上次窗口重叠 7 天，适合观察趋势；前后 14 天不重叠才是独立对比。不能将两者混用。</p><div class="table-wrap"><table><thead><tr><th>检查项</th><th>状态 / 限制</th></tr></thead><tbody><tr><td>当前导入行数</td><td>${state.rows.length} 行</td></tr><tr><td>广告归因完整性</td><td>未自动确认 · 请按报表回补规则核实</td></tr><tr><td>关键词 × 广告位置</td><td>只有原报告实际提供交叉维度才能定位；活动级位置报告不能分摊到关键词</td></tr><tr><td>自然订单 / 自然排名 / TACOS</td><td>尚未导入相应数据，不计算或推断</td></tr></tbody></table></div></section>`;}
-function terms(){const controls=scopeControls(),groups=groupTerms(current());return top('搜索词执行表','每条建议保留活动与广告组范围，审核后导出执行，不自动修改广告。','<button class="primary" id="export-terms">↓ 导出执行 CSV</button>')+controls+`<section class="card"><div class="toolbar"><input id="search" placeholder="搜索词、ASIN、广告活动" style="width:280px"><span class="tag">${groups.length} 条范围明确的搜索词</span></div><p class="note">所有数值先汇总分子分母。高花费零订单仅是调查线索，不能直接判定否词；需考虑样本量、相关性、归因回补、目标 ACOS 与外部变化。具体操作需人工确认。</p><div class="table-wrap"><table><thead><tr><th>范围 / 搜索词</th><th>原始投放</th><th>曝光 / 点击</th><th>花费 / 订单 / 销售额</th><th>CTR / CPC</th><th>CVR / ACOS</th><th>建议动作</th><th>新增目标 / 匹配</th><th>适用层级 / 理由</th></tr></thead><tbody>${groups.map(g=>{const r=g.row,m=g.m,d=state.decisions[g.key]||{};return `<tr data-term="${esc(g.key)}"><td><b>${esc(r['实际搜索词或商品ASIN']||'未提供搜索词')}</b><small>${esc(r.店铺)} · ${esc(r.站点)} · ${esc(r.广告类型)} · ${esc(r.广告ASIN)}</small><small>${esc(r.广告活动名称)} [${esc(r.广告活动ID)}]</small><small>${esc(r.广告组名称)} [${esc(r.广告组ID)}]</small></td><td>${esc(r.原投放目标)}<small>${esc(r.原匹配方式)} · ${esc(r.广告位置||'位置未提供')}</small><small>归因：${esc(r.归因口径)}</small></td><td>${fmt(m.impressions)} / ${fmt(m.clicks)}</td><td>${fmt(m.spend,'money')} / ${fmt(m.orders)} / ${fmt(m.sales,'money')}</td><td>${fmt(m.ctr,'pct')} / ${fmt(m.cpc,'money')}</td><td>${fmt(m.cvr,'pct')} / ${fmt(m.acos,'pct')}</td><td><select data-decision="action">${['待审核','观察','新增精准','新增短语','否定精准','否定词组','调整竞价','商品投放'].map(a=>`<option ${a===d.action?'selected':''}>${a}</option>`).join('')}</select></td><td><input data-decision="target" value="${esc(d.target)}" placeholder="明确目标"><small><input data-decision="match" value="${esc(d.match)}" placeholder="目标匹配方式"></small></td><td><select data-decision="level">${['广告组','广告活动'].map(a=>`<option ${a===d.level?'selected':''}>${a}</option>`).join('')}</select><small><input data-decision="reason" value="${esc(d.reason)}" placeholder="证据、风险与验证指标"></small></td></tr>`;}).join('')||'<tr><td colspan="9" class="empty"><strong>尚无搜索词数据</strong>先导入报表，再逐条审查建议及执行范围。</td></tr>'}</tbody></table></div></section>`;}
-function comparison(){const w=windowDates(end),all=scoped(),a=metrics(current()),b=metrics(all.filter(r=>r.日期>=w.previousStart&&r.日期<=w.previousEnd)),c=metrics(all.filter(r=>r.日期>=w.rollingStart&&r.日期<=w.rollingEnd));return `<div class="table-wrap"><table><thead><tr><th>指标</th><th>最近 14 天<br>${w.start} — ${w.end}</th><th>此前 14 天（不重叠）<br>${w.previousStart} — ${w.previousEnd}</th><th>上周滚动 14 天（重叠）<br>${w.rollingStart} — ${w.rollingEnd}</th></tr></thead><tbody>${[['曝光','impressions'],['点击','clicks'],['CPC','cpc','money'],['广告 CVR','cvr','pct'],['ACOS','acos','pct']].map(([n,k,t])=>`<tr><td>${n}</td><td>${fmt(a[k],t)}</td><td>${fmt(b[k],t)}</td><td>${fmt(c[k],t)}</td></tr>`).join('')}</tbody></table></div>`;}
-function decisions(){const controls=scopeControls();return top('决策与验证','把“发生了什么”和“可能为什么”分开记录。')+controls+`<section class="card">${head('周期表现对照','缺失或分母为 0 显示 —（不可计算）')}${comparison()}<p class="note">覆盖日期不足及归因回补会影响可比性；当前对照不证明因果，也不提供自然排名结论。</p></section><div class="grid" style="margin-top:22px"><section class="card">${head('创建运营实验')}<form id="action-form" class="form-grid"><label class="full">问题 / 假设<input name="title" required placeholder="例如：黑色曝光不足，是否应提高竞价？"></label>${[['fact','数据事实'],['cause','可能原因'],['support','支持证据'],['against','反对证据 / 外部因素'],['action','建议动作与广告组范围'],['verify','验证指标 / 成功标准']].map(([k,l])=>`<label class="full">${l}<textarea name="${k}" required></textarea></label>`).join('')}<label>复核日期<input type="date" name="due" required></label><label>状态<select name="status"><option>待执行</option><option>验证中</option><option>已复盘</option></select></label><button class="primary">保存决策卡</button></form></section><section class="card">${head('决策前检查清单')}<div class="event"><h3>黑色曝光不足 ≠ 必须加价</h3><p>先看预算受限、竞价资格、相关性、库存、配送、评分、位置与样本量，再做单变量实验。</p></div><div class="event"><h3>精准与短语覆盖重叠</h3><p>按实际搜索词及活动 / 广告组核查，不仅比较投放词文本。</p></div><div class="event"><h3>变体之间的订单变化</h3><p>合并前后看父体总量、各子体与总流量，结合事件；不能直接认定某颜色吞噬另一颜色。</p></div><div class="event"><h3>新增词与 ASIN 投放</h3><p>核对场景与产品适配性，区分午餐盒、冷藏箱、冷热敷；商品与互补品投放需额外证据。</p></div></section></div><section class="card">${head('运营实验记录',`${state.actions.length} 条`)}${state.actions.map((a,i)=>`<article class="record"><h3>${esc(a.title)} <span class="tag">${esc(a.status)}</span></h3><small>复核：${esc(a.due)} · 创建：${esc(a.at)} · 范围：${esc(a.scope)}</small>${[['事实','fact'],['可能原因','cause'],['支持证据','support'],['反对证据','against'],['动作','action'],['验证指标','verify']].map(([l,k])=>`<p><b>${l}</b>　${esc(a[k])}</p>`).join('')}<select data-action-status="${i}">${['待执行','验证中','已复盘'].map(s=>`<option ${s===a.status?'selected':''}>${s}</option>`).join('')}</select></article>`).join('')||'<div class="empty">还没有决策卡。每一次调整，都记录预期与复核时间。</div>'}</section>`;}
-function events(){return top('运营事件簿','把广告变化放回业务上下文中理解。')+`<div class="grid"><section class="card">${head('记录一次变化')}<form id="event-form" class="form-grid"><label>日期<input name="date" type="date" required></label><label>类型<select name="type">${['平台大促','季节 / 搜索量','价格 / 优惠券','评分 / 评论','库存 / 配送','变体合并 / 拆分','Listing / 主图','预算 / 竞价 / 位置','其他'].map(s=>`<option>${s}</option>`).join('')}</select></label><label>站点 / ASIN<input name="scope" required placeholder="US / ASIN"></label><label class="full">事实与证据来源<textarea name="detail" required></textarea></label><label>核实状态<select name="status"><option>待核实</option><option>已核实</option></select></label><button class="primary">保存事件</button></form></section><section class="card">${head('历史上下文','用户提供 · 未核实')}<div class="event"><h3>2026.10.06 — 10.07 · PD 相关窗口</h3><p>用户曾指出的活动时间。正式分析前需核实活动名称、站点与日期。</p><span class="tag amber">不作为已确认平台日历</span></div><div class="event"><h3>2026 年 10 月初 · 混色并入父体讨论</h3><p>不代表已完成合并。实际日期与当前关系以最新资料为准。</p></div><details><summary>历史广告观察（无当前结论）</summary><p class="note">历史上依赖 SB，混色 SP 转化较差；紫色合并后 SP 曾较好；黑色单独投放后转化曾下降。紫色 CPC 曾约 $0.57、黑色约 $0.78。核心词曾出现 CVR 上升约 1 个百分点、部分位置曝光下降；另一核心词流量与转化同时下降。均为特定历史窗口，不能外推。</p></details></section></div><section class="card">${head('已记录事件')}${[...state.events].reverse().map(e=>`<div class="event"><h3>${esc(e.date)} · ${esc(e.type)} <span class="tag">${esc(e.status)}</span></h3><small>${esc(e.scope)}</small><p>${esc(e.detail)}</p></div>`).join('')||'<div class="empty">暂无新增事件</div>'}</section>`;}
-function exportTerms(){const groups=groupTerms(current());if(!groups.length){toast('没有可导出的执行数据');return;}const extra=['CTR','CPC','CVR','ACOS','建议动作','新增投放的目标','目标匹配方式','适用层级','证据与验证','执行状态'];download('Upelf-搜索词执行表.csv',csv([[...fields,...extra],...groups.map(g=>{const d=state.decisions[g.key]||{},m=g.m;return [...fields.map(f=>f==='日期'?`${windowDates(end).start} ~ ${end}`:['曝光','点击','花费','订单','销售额'].includes(f)?({曝光:m.impressions,点击:m.clicks,花费:m.spend,订单:m.orders,销售额:m.sales})[f]:g.row[f]),m.ctr,m.cpc,m.cvr,m.acos,d.action||'待审核',d.target,d.match,d.level||'广告组',d.reason,'未执行 · 需人工审核'];})]));toast('已导出执行表。此文件为审核清单，不是 Amazon 批量上传格式。');}
-function bind(){document.querySelectorAll('[data-page]').forEach(el=>el.onclick=()=>{page=el.dataset.page;render();});if($('#end'))$('#end').onchange=e=>{if(!e.target.value)return;end=e.target.value;render();};if($('#scope'))$('#scope').onchange=e=>{scope=e.target.value;render();};document.querySelectorAll('[data-map]').forEach(el=>el.onchange=()=>{const a=el.dataset.map;state.mappings[a]??={};state.mappings[a][el.dataset.field]=el.value;save();});if($('#template'))$('#template').onclick=()=>download('Upelf-报表模板.csv',csv([fields]));if($('#import'))$('#import').onchange=async e=>{const file=e.target.files[0];if(!file)return;if(file.size>10*1024*1024){toast('单个文件请小于 10 MB');return;}try{const rows=importCSV(await file.text());if(!rows.length)throw Error('文件只有表头，没有明细');const keys=new Set();for(const r of rows){const key=JSON.stringify(r);if(keys.has(key))throw Error('检测到完全重复行，请在源文件核实，未导入');keys.add(key);}const previous=state.rows;state.rows=rows;state.imports.push({name:file.name,at:new Date().toISOString(),count:rows.length});if(!save()){state.rows=previous;state.imports.pop();return;}end=rows.map(r=>r.日期).sort().at(-1);render();toast(`已导入 ${rows.length} 行，请核实归因是否完整。`);}catch(err){toast(err.message);}};if($('#clear'))$('#clear').onclick=()=>{if(confirm('清除当前全部报表？产品映射、决策卡及事件将保留。建议先导出备份。')){state.rows=[];state.imports=[];save();render();}};document.querySelectorAll('[data-decision]').forEach(el=>el.onchange=()=>{const key=el.closest('[data-term]').dataset.term;state.decisions[key]??={};state.decisions[key][el.dataset.decision]=el.value;save();});if($('#search'))$('#search').oninput=e=>document.querySelectorAll('[data-term]').forEach(el=>el.hidden=!el.textContent.toLowerCase().includes(e.target.value.toLowerCase()));if($('#export-terms'))$('#export-terms').onclick=exportTerms;if($('#action-form'))$('#action-form').onsubmit=e=>{e.preventDefault();state.actions.push({...Object.fromEntries(new FormData(e.target)),at:new Date().toISOString(),scope:scope?JSON.parse(scope).join(' / '):'未选择范围'});save();render();toast('决策卡已保存');};document.querySelectorAll('[data-action-status]').forEach(el=>el.onchange=()=>{state.actions[Number(el.dataset.actionStatus)].status=el.value;save();});if($('#event-form'))$('#event-form').onsubmit=e=>{e.preventDefault();state.events.push(Object.fromEntries(new FormData(e.target)));save();render();toast('事件已保存');};}
-$('#backup').onclick=()=>download('Upelf-工作空间备份.json',JSON.stringify(state,null,2),'application/json');
-$('#restore').onchange=async e=>{try{const file=e.target.files[0];if(!file)return;const s=JSON.parse(await file.text());if(s.version!==1||!Array.isArray(s.rows)||!Array.isArray(s.actions)||!Array.isArray(s.events)||!Array.isArray(s.imports)||!s.mappings||!s.decisions)throw Error('备份格式不正确');if(!confirm('恢复将覆盖当前工作空间，是否继续？'))return;const old=state;state=s;if(!save()){state=old;return;}render();toast('备份已恢复');}catch(err){toast('恢复失败：'+err.message);}};
-render();
+  "use strict";
+  const E = globalThis.ReportEngine,
+    S = globalThis.WorkspaceStorage,
+    $ = (s) => document.querySelector(s);
+  const esc = (v) =>
+    String(v ?? "").replace(
+      /[&<>"']/g,
+      (c) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[c],
+    );
+  const id = () =>
+    globalThis.crypto?.randomUUID?.() ||
+    Date.now().toString(36) + Math.random().toString(36).slice(2);
+  let state,
+    page = "collect",
+    tab = "target",
+    scope = "",
+    drafts = [],
+    pendingFiles = [],
+    storageWarning = "",
+    busy = false,
+    lastError = "";
+  let batchValues = {},
+    periods = null,
+    mode = "7",
+    searchView = "summary",
+    metric = "impressions",
+    filter = "",
+    campaign = "",
+    group = "",
+    editProduct = null;
+  const nav = [
+    ["collect", "⇅", "1. 收集表格"],
+    ["analyze", "◫", "2. 分析数据"],
+    ["products", "▧", "产品与品牌"],
+    ["experiments", "◎", "决策与验证"],
+    ["events", "◷", "运营事件簿"],
+  ];
+  const metricLabels = {
+    impressions: "曝光",
+    clicks: "点击",
+    ctr: "CTR",
+    spend: "广告花费",
+    cpc: "CPC",
+    orders: "广告订单",
+    sales: "广告销售额",
+    cvr: "CVR",
+    acos: "ACOS",
+    roas: "ROAS",
+    sessions: "业务会话",
+    totalSales: "业务销售额",
+    totalUnits: "业务销量",
+    businessUnitSession: "业务 Unit Session %",
+  };
+  const pctKeys = ["ctr", "cvr", "acos", "businessUnitSession"];
+  const fmt = (v, k = "") =>
+    v == null
+      ? "缺失 / 不支持"
+      : pctKeys.includes(k)
+        ? (v * 100).toFixed(2) + "%"
+        : Number(v).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+  const today = () => new Date().toLocaleDateString("sv-SE");
+  function toast(t) {
+    $("#toast").textContent = t;
+    $("#toast").style.display = "block";
+    setTimeout(() => ($("#toast").style.display = "none"), 7000);
+  }
+  async function save(files = []) {
+    await S.put(state, files);
+  }
+  function download(name, data, type = "text/csv;charset=utf-8") {
+    const url = URL.createObjectURL(new Blob([data], { type }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function top(title, sub, button = "") {
+    return `<div class="topline"><div><div class="eyebrow">AMAZON / OPERATIONS</div><h1>${title}</h1><p>${sub}</p></div>${button}</div>`;
+  }
+  function head(t, s = "") {
+    return `<div class="card-head"><h2>${t}</h2><small>${s}</small></div>`;
+  }
+  function options(items, value, empty = "") {
+    return (
+      (empty ? `<option value="">${empty}</option>` : "") +
+      items
+        .map((x) => {
+          const [v, l] = Array.isArray(x) ? x : [x, x];
+          return `<option value="${esc(v)}" ${String(value) === String(v) ? "selected" : ""}>${esc(l)}</option>`;
+        })
+        .join("")
+    );
+  }
+  function field(label, name, value = "", type = "text", required = false) {
+    return `<label>${label}<input name="${name}" type="${type}" value="${esc(value)}" ${required ? "required" : ""}></label>`;
+  }
+  function scopes() {
+    return [
+      ...new Set(
+        state.reports
+          .filter((r) => r.active !== false)
+          .flatMap((r) => r.rows.map(E.scopeKey)),
+      ),
+    ];
+  }
+  function initPeriods() {
+    const all = state.reports
+      .filter((r) => r.active !== false)
+      .flatMap((r) => r.rows)
+      .filter((r) => (!scope || E.scopeKey(r) === scope) && r.end < today());
+    const latest =
+      all
+        .map((r) => r.end)
+        .sort()
+        .at(-1) || E.shift(today(), -1);
+    periods = E.periods(latest, Number(mode) || 7);
+  }
+  function render() {
+    if (!state) return;
+    if ($("#confirm-batch"))
+      batchValues = {
+        ...batchValues,
+        ...Object.fromEntries(new FormData($("#confirm-batch"))),
+      };
+    $("#nav").innerHTML = nav
+      .map(
+        ([p, i, t]) =>
+          `<button data-page="${p}" class="${page === p ? "active" : ""}"><span>${i}</span>${t}</button>`,
+      )
+      .join("");
+    $("#breadcrumb").textContent = nav.find((x) => x[0] === page)[2];
+    document.title = "亚马逊运营工作台 · " + nav.find((x) => x[0] === page)[2];
+    $("#app").innerHTML =
+      (storageWarning
+        ? `<div class="alert">${esc(storageWarning)}</div>`
+        : "") +
+      { collect, analyze, products, experiments, events }[page]() +
+      `<div class="foot"><span>AMAZON OPERATIONS WORKSPACE</span><span>事实 · 证据 · 动作 · 验证</span></div>`;
+    bind();
+  }
+  function capabilities(type) {
+    return (
+      {
+        search: "顾客搜索词变化、广告组明细、投放目标的可见搜索流量",
+        target: "投放关键词与目标变化",
+        placement: "报表实际层级的广告位变化",
+        product: "广告商品表现",
+        campaign: "活动整体表现",
+        business: "子ASIN业务销售与流量（独立口径）",
+      }[type] || "待确认"
+    );
+  }
+  function collect() {
+    return (
+      top(
+        "收集表格",
+        "直接上传后台原始报表。自动识别字段，先分析已有数据。",
+        '<button class="primary" id="start-analysis">开始分析 →</button>',
+      ) +
+      `<div class="steps workflow"><span class="current">01 收集表格</span><span>02 分析数据</span></div><section class="card drop-zone" id="dropzone"><div class="upload-icon">⇧</div><h2>拖入亚马逊后台原始报表</h2><p>支持多文件 CSV / TSV / XLSX，以及 ZIP 批量导入，无需先下载模板。</p><label class="button primary">选择多份报表<input id="upload" type="file" multiple accept=".csv,.tsv,.txt,.xlsx,.zip" hidden ${busy ? "disabled" : ""}></label><p class="note">${busy ? "正在读取文件，请稍候…" : "所有读取和分析在浏览器本地完成，不上传至服务器。旧式 .xls 暂不支持，请在 Excel 中另存为 .xlsx。"}</p></section>${lastError ? `<div class="alert" role="alert">${esc(lastError)}</div>` : ""}${drafts.length ? draftPanel() : ""}<section class="card" style="margin-top:22px">${head("数据收集清单", `${state.reports.length} 个报告版本 · 原始文件可追溯`)}<p class="note">同一分析范围、同一报告类型、同一天只采用最新启用版本的完整快照，不累加新旧上传。同一周期汇总必须与分析周期完全一致才使用，不拆分。不同报告类型独立分析，不叠加曝光与花费。上传不同筛选范围的报告时，请停用不适用版本，避免将部分导出误当完整快照。</p><div class="table-wrap"><table><thead><tr><th>文件 / 工作表</th><th>店铺 / 站点</th><th>报告类型</th><th>日期范围</th><th>行数 / 识别状态</th><th>可支持的分析 / 缺少内容</th><th>来源与版本</th></tr></thead><tbody>${
+        [...state.reports]
+          .sort((a, b) => b.seq - a.seq)
+          .map((r) => {
+            const domains = [
+              ...new Set(
+                r.rows.map((x) =>
+                  [x.store, x.site, x.adType, x.currency, x.attribution].join(
+                    " / ",
+                  ),
+                ),
+              ),
+            ];
+            const missing = [];
+            if (!r.rows.some((x) => x.campaignId || x.campaign))
+              missing.push("活动定位");
+            if (
+              ["search", "target"].includes(r.type) &&
+              !r.rows.some((x) => x.groupId || x.group)
+            )
+              missing.push("广告组定位");
+            for (const k of [
+              "impressions",
+              "clicks",
+              "spend",
+              "orders",
+              "sales",
+            ])
+              if (r.type !== "business" && !r.rows.some((x) => x[k] != null))
+                missing.push(E.labels[k]);
+            return `<tr><td>${esc(r.name)}<small>${esc(r.sheet || "CSV")} · ${esc(r.importedAt)}</small></td><td>${domains.map(esc).join("<br>")}</td><td>${E.types[r.type] || esc(r.type)}</td><td>${esc(r.start)} ~ ${esc(r.end)}<small>${r.daily ? "每日明细" : "周期汇总 · 不拆分"}</small></td><td>${r.rows.length} 行<small>${r.active === false ? "已停用 / 保留历史" : "已识别 · 已入库"}</small></td><td>${capabilities(r.type)}<small>缺少：${esc(missing.join("、") || "核心字段已具备；仍需核实归因回补")}</small>${r.issues?.length ? `<details><summary>${r.issues.length} 条质量提示</summary><p>${r.issues.slice(0, 15).map(esc).join("<br>")}</p></details>` : ""}</td><td><button data-original="${r.fileId || ""}" ${r.fileId ? "" : "disabled"}>下载原始文件</button><small><button data-toggle-report="${r.id}">${r.active === false ? "启用此版本" : "停用此版本"}</button> #${r.seq}</small></td></tr>`;
+          })
+          .join("") ||
+        '<tr><td colspan="7" class="empty"><strong>还没有报表</strong>可先上传搜索词报告，无需备齐所有报告。</td></tr>'
+      }</tbody></table></div></section><details class="card" style="margin-top:18px"><summary>需要哪些后台报表？</summary><p class="note">优先上传 SP 搜索词报告、SP 投放报告、SP 广告位置报告（每日粒度，覆盖至少最近两个完整周期）；SB 报告可单独上传分析。广告商品、广告活动报告及业务报告中的子ASIN销售与流量报告可补充。周期汇总也可导入，但只能用于完全匹配的周期。</p></details>`
+    );
+  }
+  function detectedMeta(d) {
+    const unique = (k) => {
+      const h = d.map[k];
+      if (!h) return "";
+      const values = d.raw.map((r) => String(r[h] ?? "").trim());
+      if (values.some((v) => !v)) return "";
+      const a = [...new Set(values)];
+      return a.length === 1 ? a[0] : a.length > 1 ? "文件内多值" : "";
+    };
+    const dates = d.map.date
+      ? d.raw
+          .map((r) => E.date(r[d.map.date]))
+          .filter(Boolean)
+          .sort()
+      : [];
+    const starts = d.map.start
+      ? d.raw
+          .map((r) => E.date(r[d.map.start]))
+          .filter(Boolean)
+          .sort()
+      : [];
+    const ends = d.map.end
+      ? d.raw
+          .map((r) => E.date(r[d.map.end]))
+          .filter(Boolean)
+          .sort()
+      : [];
+    const windows = [
+      ...new Set(
+        ["orders", "sales", "units"]
+          .map((k) => d.map[k]?.match(/(\d+)\s*(?:day|天)/i)?.[1])
+          .filter(Boolean),
+      ),
+    ];
+    return {
+      store: unique("store"),
+      site: unique("site"),
+      currency: unique("currency") || d.currencyHint,
+      adType: d.adType || unique("adType"),
+      attribution:
+        unique("attribution") ||
+        (windows.length === 1 ? `${windows[0]}天（归因触点待核实）` : ""),
+      start: dates[0] || starts[0] || "",
+      end: dates.at(-1) || ends.at(-1) || "",
+      mixedWindows: windows.length > 1,
+    };
+  }
+  function draftPanel() {
+    const needed = (k) => drafts.some((d) => !detectedMeta(d)[k]);
+    return `<section class="card" style="margin-top:22px">${head("确认本批必要信息", `${drafts.length} 个工作表待入库`)}<form id="confirm-batch"><div class="form-grid">${needed("store") ? field("本批店铺（缺失时统一补充）", "store", "", "text", true) : ""}${needed("site") ? `<label>本批站点<select name="site" required>${options(["US", "CA", "UK", "DE", "FR", "IT", "ES", "JP", "AU", "MX", "其他"], "", "请选择")}</select></label>` : ""}${needed("currency") ? `<label>币种（缺失时补充）<select name="currency" required>${options(["USD", "CAD", "GBP", "EUR", "JPY", "AUD", "MXN", "CNY"], "", "请选择")}</select></label>` : ""}</div><p class="note">日期仅在文件不能识别时补充；常见字段已自动匹配。广告类型/归因口径若原报告未说明，请按生成报告时的设置确认。</p>${drafts
+      .map((d, i) => {
+        const m = detectedMeta(d),
+          unknown = d.type === "unknown" || Object.keys(d.ambiguous).length;
+        return `<article class="draft"><h3>${esc(d.name)} / ${esc(d.sheet || "CSV")} <span class="tag">${d.raw.length} 行</span></h3><div class="form-grid"><label>报告类型<select data-draft="${i}" data-meta="type">${options(Object.entries(E.types), d.type)}</select></label>${!m.adType && d.type !== "business" ? `<label>广告类型<select name="adType-${i}" required>${options(["SP", "SB", "SD"], "", "请选择")}</select></label>` : `<p class="note">广告类型：${esc(m.adType || "业务报告")}</p>`}${d.type !== "business" ? field("归因口径（核对点击/视图窗口）", `attribution-${i}`, m.attribution === "文件内多值" ? "文件内多值" : m.attribution, "text", true) : '<p class="note">归因口径：业务报告</p>'}${!m.start ? field("开始日期", `start-${i}`, "", "date", true) : `<p class="note">起始 ${m.start}</p>`}${!m.end ? field("结束日期", `end-${i}`, "", "date", true) : `<p class="note">截止 ${m.end}</p>`}</div>${m.mixedWindows ? '<div class="alert">订单与销售额归因窗口不一致，请展开映射，选择同一窗口的字段后再导入。</div>' : ""}<p class="note">可支持：${capabilities(d.type)}。原始列名和前 3 行见下方预览。</p><details ${unknown || d.mappingOpen ? "open" : ""}><summary>${unknown ? "需要确认字段映射" : "查看/调整已识别字段与原始预览"}（规则会按列名保存）</summary><div class="mapping-grid">${Object.entries(
+          E.labels,
+        )
+          .map(
+            ([k, l]) =>
+              `<label>${l}<select data-draft="${i}" data-map-field="${k}">${options(
+                d.headers.map((h) => [h, h]),
+                d.map[k] || "",
+                "未提供 / 不映射",
+              )}</select></label>`,
+          )
+          .join(
+            "",
+          )}</div><div class="table-wrap"><table><thead><tr>${d.headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${d.raw
+          .slice(0, 3)
+          .map(
+            (r) =>
+              `<tr>${d.headers.map((h) => `<td>${esc(r[h])}</td>`).join("")}</tr>`,
+          )
+          .join(
+            "",
+          )}</tbody></table></div></details><button type="button" data-discard-draft="${i}">移除此工作表</button></article>`;
+      })
+      .join(
+        "",
+      )}<button class="primary" type="submit">确认并保存本批文件</button><span class="note"> 不会覆盖旧文件，分析采用最新适用版本。</span></form></section>`;
+  }
+  async function fingerprint(buffer) {
+    if (crypto.subtle) {
+      const hash = await crypto.subtle.digest("SHA-256", buffer);
+      return [...new Uint8Array(hash)]
+        .map((v) => v.toString(16).padStart(2, "0"))
+        .join("");
+    }
+    return (
+      "binary-" +
+      Array.from(new Uint8Array(buffer))
+        .reduce((a, v) => Math.imul(a ^ v, 16777619), 2166136261)
+        .toString(16) +
+      "-" +
+      buffer.byteLength
+    );
+  }
+  function cellValue(cell) {
+    const v = cell.value;
+    if (v == null) return "";
+    if (v instanceof Date) return E.date(v);
+    if (typeof v === "object") {
+      if ("result" in v) return v.result ?? "";
+      if (v.richText) return v.richText.map((t) => t.text).join("");
+      if (v.text) return v.text;
+      return "";
+    }
+    return v;
+  }
+  async function ingest(files) {
+    if (busy) return;
+    busy = true;
+    lastError = "";
+    render();
+    const errors = [];
+    let total = 0;
+    try {
+      for (const input of files) {
+        try {
+          if (input.size > 30 * 1024 * 1024) throw Error("单文件上限30MB");
+          const buffer = await input.arrayBuffer();
+          await readBuffer(input.name, buffer, null);
+        } catch (err) {
+          errors.push(input.name + "：" + err.message);
+        }
+      }
+    } finally {
+      busy = false;
+      lastError = errors.join("\n");
+      render();
+      if (drafts.length) toast("文件已读取，请确认缺失信息后保存。");
+    }
+    async function readBuffer(name, buffer, parent) {
+      total += buffer.byteLength;
+      if (total > 80 * 1024 * 1024)
+        throw Error("本批解压后总量超过80MB，请分批上传");
+      const ext = name.split(".").pop().toLowerCase();
+      if (ext === "zip") {
+        const zip = await JSZip.loadAsync(buffer);
+        const entries = Object.values(zip.files).filter(
+          (f) =>
+            !f.dir &&
+            !f.name.startsWith("__MACOSX/") &&
+            !f.name.split("/").pop().startsWith("."),
+        );
+        if (entries.length > 50) throw Error("ZIP文件数量超过50，请拆分");
+        const archiveId = await fingerprint(buffer);
+        if (!pendingFiles.some((f) => f.id === archiveId))
+          pendingFiles.push({ id: archiveId, name, buffer });
+        for (const f of entries) {
+          if (!/\.(csv|tsv|txt|xlsx)$/i.test(f.name)) {
+            errors.push(name + "/" + f.name + "：不支持此文件格式");
+            continue;
+          }
+          if (f._data?.uncompressedSize > 30 * 1024 * 1024)
+            throw Error("ZIP内单文件超过30MB");
+          try {
+            await readBuffer(
+              name + "/" + f.name,
+              await f.async("arraybuffer"),
+              archiveId,
+            );
+          } catch (err) {
+            errors.push(name + "/" + f.name + "：" + err.message);
+          }
+        }
+        return;
+      }
+      if (!["xlsx", "csv", "tsv", "txt"].includes(ext))
+        throw Error("支持 CSV、TSV、XLSX、ZIP；旧式XLS请另存为XLSX");
+      const fileId = await fingerprint(buffer);
+      const prev = state.reports.some((r) => r.fileId === fileId);
+      if (drafts.some((d) => d.fileId === fileId)) {
+        errors.push(name + "：本批重复文件，已跳过");
+        return;
+      }
+      if (prev) {
+        errors.push(
+          name +
+            "：已保存过同一原始文件，已跳过（如需新范围请先调整已保存版本）",
+        );
+        return;
+      }
+      const sheets = [];
+      if (ext === "xlsx") {
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
+        workbook.eachSheet((ws) => {
+          const matrix = [];
+          ws.eachRow({ includeEmpty: true }, (row) => {
+            const line = [];
+            row.eachCell(
+              { includeEmpty: true },
+              (c, i) => (line[i - 1] = cellValue(c)),
+            );
+            matrix.push(line);
+          });
+          if (matrix.some((r) => r.some((v) => v !== "")))
+            sheets.push({ sheet: ws.name, matrix });
+        });
+      } else {
+        const text = E.decodeText(buffer);
+        sheets.push({ sheet: "CSV", matrix: E.parseDelimited(text) });
+      }
+      if (!sheets.length) throw Error("没有可读取的工作表");
+      let successes = 0;
+      for (const { sheet, matrix } of sheets) {
+        try {
+          let d = E.inspect(matrix);
+          const rule = state.rules[d.signature];
+          if (rule) d = E.inspect(matrix, rule);
+          drafts.push({
+            ...d,
+            name,
+            sheet,
+            fileId,
+            parent,
+            mappingOpen:
+              d.type === "unknown" || Object.keys(d.ambiguous).length > 0,
+          });
+          successes++;
+        } catch (err) {
+          errors.push(name + "/" + sheet + "：" + err.message);
+        }
+      }
+      if (successes) pendingFiles.push({ id: fileId, name, buffer, parent });
+    }
+  }
+  async function confirmBatch(form) {
+    if (busy) throw Error("文件仍在读取，请稍候再保存");
+    const values = Object.fromEntries(new FormData(form));
+    const prepared = [];
+    const seq = state.reports.reduce((n, r) => Math.max(n, r.seq), 0);
+    for (let i = 0; i < drafts.length; i++) {
+      const d = drafts[i],
+        m = detectedMeta(d);
+      if (m.mixedWindows)
+        throw Error(d.name + "：订单和销售额归因窗口不同，需修正映射");
+      const result = E.prepare(d, {
+        store: m.store || values.store,
+        site: m.site || values.site,
+        currency: m.currency || values.currency,
+        adType: m.adType || values[`adType-${i}`],
+        attribution: values[`attribution-${i}`] || m.attribution,
+        start: m.start || values[`start-${i}`],
+        end: m.end || values[`end-${i}`],
+      });
+      const seen = new Set();
+      result.rows = result.rows.filter((r) => {
+        const k = JSON.stringify(
+          r,
+          Object.keys(r)
+            .filter((k) => k !== "line")
+            .sort(),
+        );
+        if (seen.has(k)) {
+          result.issues.push(
+            "文件内完全重复行已去重，请核实源报告是否有重复导出",
+          );
+          return false;
+        }
+        seen.add(k);
+        return true;
+      });
+      prepared.push({
+        ...result,
+        id: id(),
+        name: d.name,
+        sheet: d.sheet,
+        fileId: d.fileId,
+        parent: d.parent,
+        type: d.type,
+        map: d.map,
+        headers: d.headers,
+        seq: seq + i + 1,
+        active: true,
+        importedAt: new Date().toLocaleString("zh-CN"),
+        signature: d.signature,
+      });
+    }
+    const next = structuredClone(state);
+    next.reports.push(...prepared);
+    for (const d of drafts)
+      next.rules[d.signature] = { map: d.map, type: d.type };
+    await S.put(next, pendingFiles);
+    state = next;
+    drafts = [];
+    pendingFiles = [];
+    batchValues = {};
+    periods = null;
+    toast("报表与原始文件已保存，可以开始分析。");
+    render();
+  }
+  function scopeControls() {
+    const keys = scopes();
+    if (!keys.includes(scope)) scope = keys[0] || "";
+    if (!periods) initPeriods();
+    const p = periods;
+    return `<section class="card controls"><div class="toolbar"><label>分析范围<select id="scope">${options(
+      keys.map((k) => [k, JSON.parse(k).join(" / ")]),
+      scope,
+      "请选择范围",
+    )}</select></label><label>对比模式<select id="mode">${options(
+      [
+        ["7", "最近完整7天 vs 此前7天"],
+        ["14", "最近完整14天 vs 此前14天"],
+        ["custom", "自定义两个周期"],
+      ],
+      mode,
+    )}</select></label></div><div class="toolbar">${field("本期开始", "a-start", p.a.start, "date")}${field("本期结束", "a-end", p.a.end, "date")}${field("上期开始", "b-start", p.b.start, "date")}${field("上期结束", "b-end", p.b.end, "date")}<button id="apply-periods" class="primary">应用周期</button></div><p class="note">默认截止到所选数据最新已结束的日期，不包含当天。金额单位：${esc(scope ? JSON.parse(scope)[3] : "未选择")}。不同店铺、站点、广告类型、币种、归因口径独立分析。最近数据可能仍有归因回补。</p></section>`;
+  }
+  function availableType() {
+    if (tab === "actions") return "search";
+    if (
+      tab === "target" &&
+      !state.reports.some(
+        (r) =>
+          r.active !== false &&
+          r.type === "target" &&
+          r.rows.some((x) => E.scopeKey(x) === scope),
+      ) &&
+      state.reports.some(
+        (r) =>
+          r.active !== false &&
+          r.type === "search" &&
+          r.rows.some((x) => E.scopeKey(x) === scope),
+      )
+    )
+      return "search";
+    return tab;
+  }
+  function analysisData() {
+    const type = availableType(),
+      result = E.compare(
+        state.reports,
+        type,
+        scope,
+        periods,
+        tab === "search" && searchView === "summary",
+      );
+    if (tab === "target" && type === "search") {
+      const grouped = new Map(),
+        dims = E.dimensions("target");
+      for (const side of ["a", "b"])
+        for (const row of result[side].rows.filter((r) => r.target)) {
+          const key = E.keyFor(row, "target");
+          if (!grouped.has(key))
+            grouped.set(key, { key, row: { ...row, term: "" }, a: [], b: [] });
+          grouped.get(key)[side].push(row);
+        }
+      result.rows = [...grouped.values()].map((g) => ({
+        ...g,
+        am: E.metrics(g.a),
+        bm: E.metrics(g.b),
+        status: !g.a.length
+          ? "本期报告未出现"
+          : !g.b.length
+            ? "本期首次出现"
+            : "两期均有记录",
+        comparable: result.comparable && !!g.a.length && !!g.b.length,
+      }));
+      return result;
+    }
+    return result;
+  }
+  function visibleRows(result) {
+    return result.rows.filter(
+      (g) =>
+        (!campaign || (g.row.campaignId || g.row.campaign) === campaign) &&
+        (!group || (g.row.groupId || g.row.group) === group) &&
+        (!filter ||
+          Object.values(g.row)
+            .join(" ")
+            .toLowerCase()
+            .includes(filter.toLowerCase())),
+    );
+  }
+  function analyze() {
+    const controls = scopeControls();
+    return (
+      top(
+        "分析数据",
+        "先看具体对象与证据，再决定是否行动。",
+        '<button id="export-analysis">导出当前分析 CSV</button>',
+      ) +
+      controls +
+      `<div class="tabs">${[
+        ["target", "投放关键词变化"],
+        ["placement", "广告位变化"],
+        ["search", "顾客搜索词变化"],
+        ["actions", "本周结论与行动"],
+        ["product", "广告商品"],
+        ["campaign", "广告活动"],
+        ["business", "业务销售流量"],
+      ]
+        .map(
+          ([k, l]) =>
+            `<button data-tab="${k}" class="${tab === k ? "primary" : ""}">${l}</button>`,
+        )
+        .join("")}</div>` +
+      (tab === "actions" ? actionPanel() : analysisPanel())
+    );
+  }
+  function coverage(result) {
+    return `<div class="banner"><span class="icon">◷</span><div><strong>本期覆盖 ${result.a.coverage}/${result.a.expected} 天 · 上期覆盖 ${result.b.coverage}/${result.b.expected} 天</strong><p>${result.comparable ? "两个周期覆盖完整；仍需检查筛选范围与归因一致性。" : "覆盖不足：仅展示已有记录，不将缺失日期或对象补零，不据此制造下降。"} ${[...result.a.warnings, ...result.b.warnings].map(esc).join("；")}</p></div></div>`;
+  }
+  function deltaText(a, b, k) {
+    const c = E.change(a, b);
+    if (c.delta == null) return "不可比较";
+    return `${c.delta > 0 ? "+" : ""}${pctKeys.includes(k) ? (c.delta * 100).toFixed(2) + " 个百分点" : fmt(c.delta, k)} / ${c.relative == null ? "上期为0，增长率不可计算" : (c.relative > 0 ? "+" : "") + (c.relative * 100).toFixed(1) + "%"}`;
+  }
+  function metricRows(g) {
+    return Object.entries(metricLabels)
+      .filter(([k]) =>
+        tab === "business"
+          ? [
+              "sessions",
+              "totalSales",
+              "totalUnits",
+              "businessUnitSession",
+            ].includes(k)
+          : ![
+              "sessions",
+              "totalSales",
+              "totalUnits",
+              "businessUnitSession",
+            ].includes(k),
+      )
+      .map(
+        ([k, l]) =>
+          `<tr><td>${l}</td><td>${fmt(g.am[k], k)}</td><td>${fmt(g.bm[k], k)}</td><td>${g.comparable ? deltaText(g.am[k], g.bm[k], k) : "覆盖不足或对象仅出现于一期，不补零"}</td></tr>`,
+      )
+      .join("");
+  }
+  function summaryMetrics(m) {
+    const keys =
+      tab === "business"
+        ? ["sessions", "totalSales", "totalUnits", "businessUnitSession"]
+        : [
+            "impressions",
+            "clicks",
+            "ctr",
+            "spend",
+            "cpc",
+            "orders",
+            "sales",
+            "cvr",
+            "acos",
+            "roas",
+          ];
+    return keys
+      .map(
+        (k) => `<span><small>${metricLabels[k]}</small> ${fmt(m[k], k)}</span>`,
+      )
+      .join("");
+  }
+  function sources(g) {
+    return [
+      ...new Set(
+        [...g.a, ...g.b].map(
+          (r) =>
+            `${r.sourceName || "来源记录"} · 行${r.line || "?"} [${r.source}]`,
+        ),
+      ),
+    ]
+      .map(esc)
+      .join("<br>");
+  }
+  function shareMetrics(g, result) {
+    const key = (r) =>
+      JSON.stringify([
+        r.campaignId || r.campaign,
+        r.groupId || r.group || "",
+        r.target || "",
+      ]);
+    const peers = (side) =>
+      result[side].rows.filter((r) => key(r) === key(g.row));
+    const a = E.metrics(peers("a")),
+      b = E.metrics(peers("b"));
+    return {
+      trafficA: E.ratio(g.am.impressions, a.impressions),
+      trafficB: E.ratio(g.bm.impressions, b.impressions),
+      spendA: E.ratio(g.am.spend, a.spend),
+      spendB: E.ratio(g.bm.spend, b.spend),
+    };
+  }
+  function placementShare(g, result) {
+    const s = shareMetrics(g, result),
+      point = (a, b) =>
+        g.comparable && a != null && b != null
+          ? ((a - b) * 100).toFixed(2) + " 个百分点"
+          : "不可比较";
+    return `<p class="note">同层级曝光占比：${fmt(s.trafficA, "ctr")} / ${fmt(s.trafficB, "ctr")}；变化 ${point(s.trafficA, s.trafficB)}。花费占比：${fmt(s.spendA, "ctr")} / ${fmt(s.spendB, "ctr")}；变化 ${point(s.spendA, s.spendB)}（本期 / 上期）</p>`;
+  }
 
+  function analysisPanel() {
+    const result = analysisData(),
+      type = availableType(),
+      rows = visibleRows(result);
+    const allRows = result.rows;
+    const campaigns = [
+      ...new Set(
+        allRows.map((g) => g.row.campaignId || g.row.campaign).filter(Boolean),
+      ),
+    ];
+    const groups = [
+      ...new Set(
+        allRows
+          .filter(
+            (g) =>
+              !campaign || (g.row.campaignId || g.row.campaign) === campaign,
+          )
+          .map((g) => g.row.groupId || g.row.group)
+          .filter(Boolean),
+      ),
+    ];
+    return (
+      coverage(result) +
+      (tab === "target" && type === "search"
+        ? '<div class="alert">未提供投放报告，当前仅按搜索词报告中的原投放目标汇总可见流量，不代表完整投放表现。</div>'
+        : "") +
+      (tab === "placement"
+        ? '<div class="alert">严格按原始报告层级展示。活动级位置指标只作为活动背景，不能归因到单个关键词。份额仅基于同层级已提供位置；缺失位置不补零。</div>'
+        : "") +
+      `<section class="card"><div class="toolbar"><select id="campaign-filter">${options(campaigns, campaign, "全部活动")}</select><select id="group-filter">${options(groups, group, "全部广告组")}</select><input id="filter" value="${esc(filter)}" placeholder="筛选关键词、搜索词、商品或活动"><select id="metric">${options(
+        Object.entries(metricLabels).filter(([k]) =>
+          tab === "business"
+            ? [
+                "sessions",
+                "totalSales",
+                "totalUnits",
+                "businessUnitSession",
+              ].includes(k)
+            : ![
+                "sessions",
+                "totalSales",
+                "totalUnits",
+                "businessUnitSession",
+              ].includes(k),
+        ),
+        metric,
+      )}</select>${
+        tab === "search"
+          ? `<select id="search-view">${options(
+              [
+                ["summary", "搜索词汇总视图"],
+                ["detail", "广告组明细视图"],
+              ],
+              searchView,
+            )}</select>`
+          : ""
+      }</div>${tab === "search" && searchView === "summary" ? '<p class="note">汇总仅合并当前同口径范围的同一实际搜索词。选择建议动作前请切换广告组明细，避免无法定位。</p>' : ""}<div class="table-wrap"><table class="analysis-table"><thead><tr><th>对象 / 层级 / 来源</th><th>本期指标</th><th>上期指标</th><th>${metricLabels[metric]} 变化值 / 幅度</th><th>判断依据与明细</th></tr></thead><tbody>${
+        rows
+          .map((g) => {
+            const r = g.row,
+              title =
+                tab === "search"
+                  ? r.term
+                  : tab === "target"
+                    ? r.target
+                    : tab === "placement"
+                      ? r.placement
+                      : tab === "business" || tab === "product"
+                        ? r.asin || r.sku
+                        : r.campaign || r.campaignId;
+            const level =
+              tab === "placement"
+                ? r.target
+                  ? "投放目标 × 位置"
+                  : r.group || r.groupId
+                    ? "广告组 × 位置"
+                    : "活动 × 位置"
+                : "";
+            return `<tr><td><b>${esc(title || "对象字段未提供")}</b><small>${esc(r.match || "匹配方式未提供")} ${level}</small><small>${esc(r.campaign || r.campaignId || "活动未提供")} / ${esc(r.group || r.groupId || "广告组未提供")}</small><small>活动ID ${esc(r.campaignId || "缺失")} · 组ID ${esc(r.groupId || "缺失")}</small>${tab === "search" && searchView === "detail" ? `<small>原目标 ${esc(r.target)} · ${esc(r.match)} · 广告ASIN ${esc(r.asin)}</small>` : ""}<span class="tag">${g.status}</span></td><td><div class="metric-stack">${summaryMetrics(g.am)}</div></td><td><div class="metric-stack">${summaryMetrics(g.bm)}</div></td><td>${g.comparable ? deltaText(g.am[metric], g.bm[metric], metric) : "不可比较：不补零"}${tab === "placement" ? placementShare(g, result) : ""}</td><td><p>${E.explain(g, result).map(esc).join("；")}</p>${tab === "search" && g.am.orders > 0 && r.match && !/exact|精准|精确/i.test(r.match) ? '<p class="note">精准提取候选：已有出单，原匹配非精准；先核实产品相关性与现有精准覆盖，再决定是否新增。</p>' : ""}<details><summary>所有指标与来源证据</summary><table><thead><tr><th>指标</th><th>本期</th><th>上期</th><th>变化 / 幅度</th></tr></thead><tbody>${metricRows(g)}</tbody></table><p class="note">来源：${sources(g)}</p>${tab === "target" ? keywordPlacementContext(r) : ""}</details>${["search", "target"].includes(tab) && !(tab === "search" && searchView === "summary") ? `<button data-action-key="${esc(g.key)}">加入行动清单</button>` : ""}</td></tr>`;
+          })
+          .join("") ||
+        `<tr><td colspan="5" class="empty"><strong>所选范围与周期暂无可分析记录</strong>${E.types[type]} 尚缺失、周期汇总不匹配，或当前筛选无结果。可以返回收集表格补充，不影响其他已有报表分析。</td></tr>`
+      }</tbody></table></div></section>${trend(type)}${tab === "business" ? '<div class="alert">业务 Unit Session % = 已订购商品数量 / 会话，与广告订单 / 点击的 CVR 不同。业务数据独立显示，不从总订单中减广告订单推断自然订单。</div>' : ""}`
+    );
+  }
+  function keywordPlacementContext(r) {
+    const p = E.compare(state.reports, "placement", scope, periods);
+    const same = p.rows.filter(
+      (g) =>
+        (g.row.campaignId || g.row.campaign) === (r.campaignId || r.campaign),
+    );
+    if (!same.length)
+      return '<p class="note">所属活动的广告位置背景：尚无对应位置报告，无法定位关键词 × 位置。</p>';
+    return (
+      "<h3>所属活动的广告位置背景（非关键词归因）</h3>" +
+      same
+        .map(
+          (g) =>
+            `<p class="note">${esc(g.row.placement)} · 层级 ${g.row.target ? "报告含投放目标交叉（请另见位置页）" : "活动/广告组"} · CPC ${fmt(g.am.cpc)} / ${fmt(g.bm.cpc)}；仅作背景</p>`,
+        )
+        .join("")
+    );
+  }
+  function trend(type) {
+    if (!scope || !periods) return "";
+    const result = [];
+    for (let i = 7; i >= 0; i--) {
+      const end = E.shift(periods.a.end, -i * 7),
+        period = { start: E.shift(end, -6), end },
+        s = E.select(state.reports, type, scope, period);
+      if (s.full) {
+        const filtered = s.rows.filter(
+          (r) =>
+            (!campaign || (r.campaignId || r.campaign) === campaign) &&
+            (!group || (r.groupId || r.group) === group),
+        );
+        result.push({ period, m: E.metrics(filtered), summary: s.summary });
+      }
+    }
+    if (result.length < 2)
+      return '<p class="note">连续多周趋势：完整周覆盖不足，暂不绘制虚假的周度变化。</p>';
+    return `<section class="card" style="margin-top:20px">${head("连续多周趋势", "只展示覆盖完整的7天窗口，不拆周期汇总")}<div class="table-wrap"><table><thead><tr><th>周期</th><th>曝光</th><th>点击</th><th>花费</th><th>订单</th><th>CVR</th><th>业务销售额</th></tr></thead><tbody>${result.map((x) => `<tr><td>${x.period.start} ~ ${x.period.end}</td>${["impressions", "clicks", "spend", "orders", "cvr", "totalSales"].map((k) => `<td>${fmt(x.m[k], k)}</td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`;
+  }
+  function relatedProduct(r) {
+    return state.products.find(
+      (p) =>
+        r.asin &&
+        p.asins.split(/[,，\s]+/).includes(r.asin) &&
+        (!p.store || p.store === r.store) &&
+        (!p.site || p.site === r.site),
+    );
+  }
+  function addAction(g, result) {
+    const r = g.row,
+      p = relatedProduct(r),
+      evidence = E.explain(g, result).join("；");
+    if (!g.a.length) {
+      toast("本期无记录，只能观察覆盖，不生成执行建议。");
+      return;
+    }
+    const key = [
+      scope,
+      periods.a.start,
+      periods.a.end,
+      r.campaignId || r.campaign,
+      r.groupId || r.group,
+      r.term || r.target,
+      r.match,
+    ].join("|");
+    if (state.actions.some((a) => a.analysisKey === key)) {
+      toast("此对象已在本期行动清单中");
+      return;
+    }
+    state.actions.push({
+      id: id(),
+      analysisKey: key,
+      priority: "中",
+      store: r.store,
+      site: r.site,
+      adType: r.adType,
+      currency: r.currency,
+      attribution: r.attribution,
+      campaign: r.campaign || "",
+      campaignId: r.campaignId || "",
+      group: r.group || "",
+      groupId: r.groupId || "",
+      subject: r.term || r.target || "",
+      asin: r.asin || "",
+      productId: p?.id || "",
+      newTarget: r.term || r.target || "",
+      originalTarget: r.target || "",
+      match: r.match || "",
+      issue: evidence,
+      suggestion: "继续观察",
+      evidence: `本期花费 ${fmt(g.am.spend)}；订单 ${fmt(g.am.orders)}；上期花费 ${fmt(g.bm.spend)}；订单 ${fmt(g.bm.orders)}。来源 ${[...new Set(g.a.map((x) => x.sourceName))].join("、")}。`,
+      cause:
+        "待检验：预算、竞价、相关性、促销、库存、评分或变体变化，当前数据不证明因果。",
+      missing: p
+        ? `已关联产品：${p.brand} / ${p.name}。相关性仍需人工确认；目标ACOS、当前库存、竞价及归因回补待补齐。`
+        : "产品相关性待确认；缺少关联产品信息、目标与外部事件证据。",
+      verify:
+        "下个完整同口径周期复核曝光、CTR、CPC、订单、CVR、ACOS；控制单变量并记录事件。",
+      status: "待审核",
+      due: E.shift(periods.a.end, 7),
+      period: `${periods.a.start}~${periods.a.end}`,
+    });
+  }
+  function productContext(a) {
+    const p = state.products.find((p) => p.id === a.productId);
+    return `<label class="full">关联产品（未能从报告识别时手动确认）<select data-action="${a.id}" data-field="productId">${options(
+      state.products.map((p) => [
+        p.id,
+        `${p.brand} / ${p.name} / ${p.store || "店铺未限定"}`,
+      ]),
+      a.productId || "",
+      "未关联 · 相关性待确认",
+    )}</select></label>${p ? `<div class="full alert">产品背景（不是相关性判定，也不是实时经营数据）：${esc(p.brand)} / ${esc(p.name)}<br>规格：${esc(p.spec || "未提供")}<br>卖点：${esc(p.selling || "未提供")}<br>场景：${esc(p.scenes || "未提供")}<br>关键词：${esc(p.keywords || "未提供")}<br>目标：${esc(p.goals || "未配置")}<br>限制/历史问题：${esc(p.issues || "未提供")}<br>资料状态：${esc(p.status || "待核实")}。请结合这些信息审核搜索词意图与产品差异，不能把词面相似等同转化原因。</div>` : ""}`;
+  }
+  function actionPanel() {
+    const items = state.actions.filter((a) => a.analysisKey);
+    return `<section class="card">${head("本周结论与行动", "建议均需人工审核，不自动投放/否词")}<p class="note">从关键词或搜索词广告组明细中，将具体发现加入行动清单。每条卡保留事实、可能原因、缺失证据与验证标准。无活动或广告组定位时标记不可执行，不输出无位置的否词指令。</p>${weeklyConclusions()}<div class="toolbar"><button id="generate-actions" class="primary">从本期具体变化生成待审核清单</button><button id="export-actions">导出全部行动 CSV</button></div>${
+      items.length
+        ? items
+            .map(
+              (a) =>
+                `<article class="action-card"><h3>${esc(a.subject)} <span class="tag">${esc(a.store)} / ${esc(a.site)}</span></h3><p class="note">${esc(a.campaign)} [${esc(a.campaignId)}] → ${esc(a.group)} [${esc(a.groupId)}] · ${esc(a.adType)} · ${esc(a.currency)} · ${esc(a.attribution)} · ${esc(a.period)}</p>${!(a.campaign || a.campaignId) || !(a.group || a.groupId) ? '<div class="alert">执行定位不足：须补充原报告活动与广告组后再操作。</div>' : ""}<div class="form-grid">${[
+                  ["priority", "优先级"],
+                  ["suggestion", "建议动作"],
+                  ["status", "执行状态"],
+                ]
+                  .map(
+                    ([k, l]) =>
+                      `<label>${l}<select data-action="${a.id}" data-field="${k}">${options(k === "priority" ? ["高", "中", "低"] : k === "suggestion" ? ["继续观察", "调整竞价", "调整预算", "新增精准", "新增短语", "否定精准", "否定词组"] : ["待审核", "待执行", "验证中", "已复盘"], a[k])}</select></label>`,
+                  )
+                  .join(
+                    "",
+                  )}<label>复盘日期<input type="date" data-action="${a.id}" data-field="due" value="${esc(a.due)}"></label><label class="full">新增投放目标（动作审核时确认）<input data-action="${a.id}" data-field="newTarget" value="${esc(a.newTarget || a.subject)}"></label>${productContext(a)}${[
+                  ["issue", "具体变化 / 问题"],
+                  ["evidence", "支撑数据与来源"],
+                  ["cause", "可能原因（假设）"],
+                  ["missing", "缺少证据 / 相关性"],
+                  ["verify", "后续验证指标"],
+                ]
+                  .map(
+                    ([k, l]) =>
+                      `<label class="full">${l}<textarea data-action="${a.id}" data-field="${k}">${esc(a[k])}</textarea></label>`,
+                  )
+                  .join("")}</div></article>`,
+            )
+            .join("")
+        : '<div class="empty">尚未添加本期行动，不以空数据生成通用结论。</div>'
+    }</section>`;
+  }
+  function weeklyConclusions() {
+    const previous = tab;
+    tab = "target";
+    const r = analysisData();
+    tab = previous;
+    const records = visibleRows(r)
+      .filter((g) => g.a.length)
+      .sort(
+        (a, b) =>
+          (b.comparable && b.am.spend != null && b.bm.spend != null
+            ? Math.abs(b.am.spend - b.bm.spend)
+            : 0) -
+          (a.comparable && a.am.spend != null && a.bm.spend != null
+            ? Math.abs(a.am.spend - a.bm.spend)
+            : 0),
+      )
+      .slice(0, 5);
+    return `<div class="analysis-block"><h3>本周最重要的具体变化（按可比花费变化规模排列，缺失不计差值）</h3>${records.map((g) => `<article class="record"><b>${esc(g.row.target || g.row.term || "目标未提供")}</b><small>${esc(g.row.campaign || g.row.campaignId)} / ${esc(g.row.group || g.row.groupId)}</small><p>${E.explain(g, r).map(esc).join("；")}。本期花费 ${fmt(g.am.spend)}，上期 ${fmt(g.bm.spend)}；本期订单 ${fmt(g.am.orders)}，上期 ${fmt(g.bm.orders)}。</p><p class="note">可能原因：预算、竞价、相关性或外部事件变化，均未确证。缺少证据：当前库存、价格促销、评分与目标ACOS。建议：先核对证据再做单变量调整；下个完整周期复核曝光、CTR、CPC、订单与ACOS。</p></article>`).join("") || '<p class="note">没有可支持结论的投放目标记录，请补充投放报告或含投放目标的搜索词报告。</p>'}</div>`;
+  }
+  const productFields = {
+    name: "产品名称",
+    brand: "品牌",
+    store: "店铺",
+    site: "站点",
+    asins: "ASIN（多个用逗号分隔）",
+    sku: "SKU",
+    spec: "规格",
+    colors: "颜色",
+    pack: "包装数量",
+    cost: "成本（注明币种/口径）",
+    price: "售价（注明日期/币种）",
+    selling: "核心卖点",
+    scenes: "使用场景",
+    keywords: "核心关键词",
+    goals: "运营目标",
+    issues: "历史问题 / 产品限制",
+    history: "历史经营记录",
+    variants: "变体、父体映射和核实记录",
+    status: "资料状态",
+  };
+  function products() {
+    const p = state.products.find((p) => p.id === editProduct);
+    return (
+      top(
+        "产品与品牌",
+        "历史资料保留并可编辑，新产品独立配置，不继承其他品牌的结论。",
+        '<button id="new-product" class="primary">＋ 添加产品</button>',
+      ) +
+      (editProduct
+        ? `<section class="card">${head(p ? "编辑产品" : "添加新产品")}<form id="product-form" class="form-grid">${Object.entries(
+            productFields,
+          )
+            .map(([k, l]) =>
+              [
+                "spec",
+                "selling",
+                "scenes",
+                "keywords",
+                "goals",
+                "issues",
+                "history",
+                "variants",
+              ].includes(k)
+                ? `<label class="full">${l}<textarea name="${k}">${esc(p?.[k] || "")}</textarea></label>`
+                : field(
+                    l,
+                    k,
+                    p?.[k] || "",
+                    "text",
+                    ["name", "brand"].includes(k),
+                  ),
+            )
+            .join(
+              "",
+            )}<button class="primary">保存产品</button><button type="button" id="cancel-product">取消</button></form></section>`
+        : "") +
+      `<div class="product-grid" style="margin-top:20px">${state.products
+        .map(
+          (p) =>
+            `<section class="card">${head(esc(p.name), esc(p.brand))}<div class="chips"><span class="tag">${esc(p.store || "店铺待配置")}</span><span class="tag">${esc(p.site || "站点待配置")}</span><span class="tag amber">${esc(p.status || "待核实")}</span></div><p class="note">ASIN ${esc(p.asins || "待补充")} · SKU ${esc(p.sku || "待补充")}</p><div class="facts">${esc(p.spec || "规格待补充").replaceAll("\n", "<br>")}</div><p><b>场景</b> ${esc(p.scenes)}</p><p><b>定位</b> ${esc(p.selling)}</p><details><summary>全部资料与历史记录</summary>${Object.entries(
+              productFields,
+            )
+              .map(
+                ([k, l]) =>
+                  `<p class="note"><b>${l}：</b>${esc(p[k] || "未提供").replaceAll("\n", "<br>")}</p>`,
+              )
+              .join(
+                "",
+              )}</details><button data-edit-product="${p.id}">编辑 / 补充</button></section>`,
+        )
+        .join("")}</div>`
+    );
+  }
+  function experiments() {
+    return (
+      top("决策与验证", "保留已有实验记录，并可继续记录运营假设与验证。") +
+      `<section class="card"><form id="experiment-form" class="form-grid">${field("问题 / 假设", "title", "", "text", true)}${field("复核日期", "due", "", "date", true)}<label>状态<select name="status"><option>待执行</option><option>验证中</option><option>已复盘</option></select></label>${[
+        ["fact", "数据事实"],
+        ["cause", "可能原因"],
+        ["support", "支持证据"],
+        ["against", "反对证据"],
+        ["action", "动作及活动/广告组范围"],
+        ["verify", "验证标准"],
+      ]
+        .map(
+          ([k, l]) =>
+            `<label class="full">${l}<textarea name="${k}" required></textarea></label>`,
+        )
+        .join(
+          "",
+        )}<button class="primary">保存实验</button></form></section><section class="card" style="margin-top:20px">${head("已有实验记录")}${
+        state.actions
+          .filter((a) => !a.analysisKey)
+          .map(
+            (a, i) =>
+              `<div class="record"><h3>${esc(a.title)}</h3><small>${esc(a.at)} · ${esc(a.due)} · ${esc(a.scope)}</small>${["fact", "cause", "support", "against", "action", "verify"].map((k) => `<p>${esc(a[k])}</p>`).join("")}<select data-experiment="${i}">${options(["待执行", "验证中", "已复盘"], a.status)}</select></div>`,
+          )
+          .join("") || '<div class="empty">暂无实验记录</div>'
+      }${state.legacy?.decisions && Object.keys(state.legacy.decisions).length ? `<details><summary>旧版搜索词执行建议（完整保留）</summary><pre>${esc(JSON.stringify(state.legacy.decisions, null, 2))}</pre></details>` : ""}</section>`
+    );
+  }
+  function events() {
+    return (
+      top(
+        "运营事件簿",
+        "记录大促、价格、评论、库存、配送、变体及投放结构变化。",
+      ) +
+      `<section class="card"><form id="event-form" class="form-grid">${field("日期", "date", "", "date", true)}${field("品牌 / 店铺 / 站点 / ASIN", "scope", "", "text", true)}<label>事件类型<select name="type">${options(["平台大促", "季节 / 搜索量", "价格 / 优惠券", "评分 / 评论", "库存 / 配送", "变体合并 / 拆分", "Listing / 主图", "预算 / 竞价 / 位置", "其他"], "")}</select></label><label class="full">事件与证据来源<textarea name="detail" required></textarea></label><label>核实状态<select name="status"><option>待核实</option><option>已核实</option></select></label><button class="primary">保存事件</button></form></section><section class="card" style="margin-top:20px">${head("事件记录")}${[
+        ...state.events,
+      ]
+        .reverse()
+        .map(
+          (e) =>
+            `<div class="event"><h3>${esc(e.date)} · ${esc(e.type)} <span class="tag">${esc(e.status)}</span></h3><p class="note">${esc(e.scope)}</p><p>${esc(e.detail)}</p></div>`,
+        )
+        .join("")}</section>`
+    );
+  }
+  function exportAnalysis() {
+    if (tab === "actions") {
+      exportActions();
+      return;
+    }
+    const data = analysisData(),
+      rows = visibleRows(data);
+    const keys = Object.keys(metricLabels);
+    const header = [
+      "店铺",
+      "站点",
+      "广告类型",
+      "币种",
+      "归因口径",
+      "报告类型",
+      "活动",
+      "活动ID",
+      "广告组",
+      "广告组ID",
+      "关键词/目标",
+      "匹配",
+      "搜索词",
+      "位置",
+      "广告ASIN",
+      "本期起",
+      "本期止",
+      "上期起",
+      "上期止",
+      "覆盖可比",
+      "出现状态",
+      ...keys.flatMap((k) => [
+        metricLabels[k] + "本期",
+        metricLabels[k] + "上期",
+        metricLabels[k] + "变化",
+        metricLabels[k] + "变化率",
+        metricLabels[k] + "百分点变化（比率指标）",
+      ]),
+      "本期曝光占比",
+      "上期曝光占比",
+      "曝光占比百分点变化",
+      "本期花费占比",
+      "上期花费占比",
+      "花费占比百分点变化",
+      "分析说明",
+      "来源",
+    ];
+    download(
+      "亚马逊运营-分析.csv",
+      E.safeCSV([
+        header,
+        ...rows.map((g) => {
+          const r = g.row;
+          const shares = tab === "placement" ? shareMetrics(g, data) : {};
+          return [
+            r.store,
+            r.site,
+            r.adType,
+            r.currency,
+            r.attribution,
+            E.types[availableType()],
+            r.campaign,
+            r.campaignId,
+            r.group,
+            r.groupId,
+            r.target,
+            r.match,
+            r.term,
+            r.placement,
+            r.asin,
+            periods.a.start,
+            periods.a.end,
+            periods.b.start,
+            periods.b.end,
+            g.comparable ? "是" : "否",
+            g.status,
+            ...keys.flatMap((k) => {
+              const c = g.comparable ? E.change(g.am[k], g.bm[k]) : {};
+              return [
+                g.am[k],
+                g.bm[k],
+                c.delta,
+                c.relative,
+                pctKeys.includes(k) && c.delta != null ? c.delta * 100 : null,
+              ];
+            }),
+            shares.trafficA,
+            shares.trafficB,
+            g.comparable && shares.trafficA != null && shares.trafficB != null
+              ? (shares.trafficA - shares.trafficB) * 100
+              : null,
+            shares.spendA,
+            shares.spendB,
+            g.comparable && shares.spendA != null && shares.spendB != null
+              ? (shares.spendA - shares.spendB) * 100
+              : null,
+            E.explain(g, data).join("；"),
+            [
+              ...new Set(
+                [...g.a, ...g.b].map(
+                  (r) => `${r.sourceName} [${r.source}] 行${r.line}`,
+                ),
+              ),
+            ].join("；"),
+          ];
+        }),
+      ]),
+    );
+  }
+  function exportActions() {
+    const keys = [
+      "priority",
+      "store",
+      "site",
+      "adType",
+      "currency",
+      "attribution",
+      "campaign",
+      "campaignId",
+      "group",
+      "groupId",
+      "subject",
+      "originalTarget",
+      "asin",
+      "newTarget",
+      "productId",
+      "match",
+      "issue",
+      "suggestion",
+      "evidence",
+      "cause",
+      "missing",
+      "verify",
+      "status",
+      "due",
+      "period",
+    ];
+    const labels = [
+      "优先级",
+      "店铺",
+      "站点",
+      "广告类型",
+      "币种",
+      "归因口径",
+      "活动",
+      "活动ID",
+      "广告组",
+      "广告组ID",
+      "关键词/搜索词",
+      "原目标",
+      "广告ASIN",
+      "新增投放目标",
+      "关联产品ID",
+      "匹配方式",
+      "问题",
+      "建议动作",
+      "依据",
+      "可能原因",
+      "缺少证据",
+      "验证指标",
+      "执行状态",
+      "复盘日期",
+      "分析周期",
+    ];
+    download(
+      "亚马逊运营-行动清单.csv",
+      E.safeCSV([
+        [...labels, "执行定位检查"],
+        ...state.actions
+          .filter((a) => a.analysisKey)
+          .map((a) => [
+            ...keys.map((k) => a[k]),
+            (a.campaign || a.campaignId) && (a.group || a.groupId)
+              ? "可定位，仍需人工审核"
+              : "定位不足，不可执行",
+          ]),
+      ]),
+    );
+  }
+  function bind() {
+    if ($("#confirm-batch"))
+      for (const [k, v] of Object.entries(batchValues)) {
+        const el = $("#confirm-batch").elements.namedItem(k);
+        if (el) el.value = v;
+      }
+    document.querySelectorAll("[data-page]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          page = b.dataset.page;
+          render();
+        }),
+    );
+    if ($("#upload"))
+      $("#upload").onchange = (e) => ingest([...e.target.files]);
+    const drop = $("#dropzone");
+    if (drop) {
+      drop.ondragover = (e) => {
+        e.preventDefault();
+        drop.classList.add("dragging");
+      };
+      drop.ondragleave = () => drop.classList.remove("dragging");
+      drop.ondrop = (e) => {
+        e.preventDefault();
+        ingest([...e.dataTransfer.files]);
+      };
+    }
+    if ($("#start-analysis"))
+      $("#start-analysis").onclick = () => {
+        if (!state.reports.some((r) => r.active !== false)) {
+          toast("请先保存至少一份可识别报表");
+          return;
+        }
+        page = "analyze";
+        render();
+      };
+    document.querySelectorAll("[data-draft]").forEach(
+      (el) =>
+        (el.onchange = () => {
+          const d = drafts[Number(el.dataset.draft)];
+          d.mappingOpen = true;
+          if (el.dataset.meta === "type") d.type = el.value;
+          else if (el.value) d.map[el.dataset.mapField] = el.value;
+          else delete d.map[el.dataset.mapField];
+          render();
+        }),
+    );
+    document.querySelectorAll("[data-discard-draft]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          drafts.splice(Number(b.dataset.discardDraft), 1);
+          render();
+        }),
+    );
+    if ($("#confirm-batch"))
+      $("#confirm-batch").onsubmit = (e) => {
+        e.preventDefault();
+        confirmBatch(e.target).catch((err) => toast(err.message));
+      };
+    document.querySelectorAll("[data-toggle-report]").forEach(
+      (b) =>
+        (b.onclick = async () => {
+          const r = state.reports.find((r) => r.id === b.dataset.toggleReport);
+          r.active = r.active === false;
+          await save();
+          render();
+        }),
+    );
+    document.querySelectorAll("[data-original]").forEach(
+      (b) =>
+        (b.onclick = async () => {
+          const f = await S.get("files", b.dataset.original);
+          if (!f) {
+            toast("原文件未保存或已丢失，请恢复完整备份");
+            return;
+          }
+          download(
+            f.name.split("/").at(-1),
+            f.buffer,
+            "application/octet-stream",
+          );
+        }),
+    );
+    if ($("#scope"))
+      $("#scope").onchange = (e) => {
+        scope = e.target.value;
+        campaign = "";
+        group = "";
+        initPeriods();
+        render();
+      };
+    if ($("#mode"))
+      $("#mode").onchange = (e) => {
+        mode = e.target.value;
+        if (mode !== "custom") initPeriods();
+        render();
+      };
+    if ($("#apply-periods"))
+      $("#apply-periods").onclick = () => {
+        const p = {
+          a: {
+            start: $('[name="a-start"]').value,
+            end: $('[name="a-end"]').value,
+          },
+          b: {
+            start: $('[name="b-start"]').value,
+            end: $('[name="b-end"]').value,
+          },
+        };
+        if (
+          Object.values(p).some(
+            (x) => !x.start || !x.end || x.start > x.end || x.end >= today(),
+          )
+        ) {
+          toast("请选择有效的已完成日期范围（不含今天）");
+          return;
+        }
+        if (!(p.a.start > p.b.end || p.b.start > p.a.end)) {
+          toast("两个对比周期不可重叠；周滚动趋势在下方单独展示");
+          return;
+        }
+        periods = p;
+        mode = "custom";
+        render();
+      };
+    document.querySelectorAll("[data-tab]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          tab = b.dataset.tab;
+          campaign = "";
+          group = "";
+          filter = "";
+          metric = tab === "business" ? "totalSales" : "impressions";
+          if (scope) {
+            const current = JSON.parse(scope),
+              wantBusiness = tab === "business";
+            if ((current[2] === "业务") !== wantBusiness) {
+              scope =
+                scopes().find((k) => {
+                  const v = JSON.parse(k);
+                  return (
+                    v[0] === current[0] &&
+                    v[1] === current[1] &&
+                    v[3] === current[3] &&
+                    (v[2] === "业务") === wantBusiness
+                  );
+                }) || scope;
+              initPeriods();
+            }
+          }
+          render();
+        }),
+    );
+    for (const [selector, fn] of [
+      [
+        "#campaign-filter",
+        (v) => {
+          campaign = v;
+          group = "";
+        },
+      ],
+      ["#group-filter", (v) => (group = v)],
+      ["#metric", (v) => (metric = v)],
+      [
+        "#search-view",
+        (v) => {
+          searchView = v;
+          campaign = "";
+          group = "";
+        },
+      ],
+      ["#filter", (v) => (filter = v)],
+    ])
+      if ($(selector))
+        $(selector).onchange = (e) => {
+          fn(e.target.value);
+          render();
+        };
+    if ($("#export-analysis")) $("#export-analysis").onclick = exportAnalysis;
+    if ($("#export-actions")) $("#export-actions").onclick = exportActions;
+    document.querySelectorAll("[data-action-key]").forEach(
+      (b) =>
+        (b.onclick = async () => {
+          const result = analysisData();
+          const g = result.rows.find((g) => g.key === b.dataset.actionKey);
+          addAction(g, result);
+          await save();
+          toast("已加入待审核行动清单");
+        }),
+    );
+    if ($("#generate-actions"))
+      $("#generate-actions").onclick = async () => {
+        const previous = tab;
+        let added = 0;
+        for (const t of ["target", "search"]) {
+          tab = t;
+          const old = searchView;
+          searchView = "detail";
+          const r = analysisData();
+          for (const g of r.rows
+            .filter((g) => g.a.length && (g.am.spend > 0 || g.am.orders > 0))
+            .slice(0, 100)) {
+            const n = state.actions.length;
+            addAction(g, r);
+            added += state.actions.length - n;
+          }
+          searchView = old;
+        }
+        tab = previous;
+        await save();
+        render();
+        toast(`已新增 ${added} 条待审核行动，不自动否词或加价。`);
+      };
+    document.querySelectorAll("[data-action]").forEach(
+      (el) =>
+        (el.onchange = async () => {
+          const a = state.actions.find((a) => a.id === el.dataset.action);
+          a[el.dataset.field] = el.value;
+          await save();
+          if (el.dataset.field === "productId") render();
+        }),
+    );
+    if ($("#new-product"))
+      $("#new-product").onclick = () => {
+        editProduct = "new";
+        render();
+      };
+    document.querySelectorAll("[data-edit-product]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          editProduct = b.dataset.editProduct;
+          render();
+        }),
+    );
+    if ($("#cancel-product"))
+      $("#cancel-product").onclick = () => {
+        editProduct = null;
+        render();
+      };
+    if ($("#product-form"))
+      $("#product-form").onsubmit = async (e) => {
+        e.preventDefault();
+        const p = {
+          ...Object.fromEntries(new FormData(e.target)),
+          id: editProduct === "new" ? id() : editProduct,
+        };
+        const i = state.products.findIndex((x) => x.id === p.id);
+        if (i < 0) state.products.push(p);
+        else state.products[i] = p;
+        await save();
+        editProduct = null;
+        render();
+      };
+    if ($("#experiment-form"))
+      $("#experiment-form").onsubmit = async (e) => {
+        e.preventDefault();
+        state.actions.push({
+          ...Object.fromEntries(new FormData(e.target)),
+          at: new Date().toLocaleString(),
+          scope: scope ? JSON.parse(scope).join(" / ") : "未指定",
+        });
+        await save();
+        render();
+      };
+    document.querySelectorAll("[data-experiment]").forEach(
+      (el) =>
+        (el.onchange = async () => {
+          state.actions.filter((a) => !a.analysisKey)[
+            Number(el.dataset.experiment)
+          ].status = el.value;
+          await save();
+        }),
+    );
+    if ($("#event-form"))
+      $("#event-form").onsubmit = async (e) => {
+        e.preventDefault();
+        state.events.push(Object.fromEntries(new FormData(e.target)));
+        await save();
+        render();
+      };
+  }
+  function base64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 32768)
+      s += String.fromCharCode(...bytes.subarray(i, i + 32768));
+    return btoa(s);
+  }
+  $("#backup").onclick = async () => {
+    try {
+      const wanted = new Set(
+        state.reports.flatMap((r) => [r.fileId, r.parent]).filter(Boolean),
+      );
+      const files = (await S.listFiles()).filter((f) => wanted.has(f.id));
+      const backup = {
+        format: "amazon-operations-backup",
+        version: 2,
+        state,
+        files: files.map((f) => ({
+          ...f,
+          buffer: undefined,
+          base64: base64(f.buffer),
+        })),
+      };
+      download(
+        "亚马逊运营-完整备份.json",
+        JSON.stringify(backup),
+        "application/json",
+      );
+    } catch (err) {
+      toast("备份失败：" + err.message);
+    }
+  };
+  $("#restore").onchange = async (e) => {
+    try {
+      const file = e.target.files[0];
+      if (!file) return;
+      const b = JSON.parse(await file.text());
+      let next,
+        files = [];
+      if (b.version === 1 && Array.isArray(b.rows) && b.mappings)
+        next = S.migrate(b);
+      else if (
+        b.format === "amazon-operations-backup" &&
+        b.state?.version === 2 &&
+        Array.isArray(b.state.reports) &&
+        Array.isArray(b.state.products) &&
+        Array.isArray(b.state.actions) &&
+        Array.isArray(b.state.events)
+      ) {
+        next = b.state;
+        files = (b.files || []).map((f) => ({
+          ...f,
+          buffer: Uint8Array.from(atob(f.base64), (c) => c.charCodeAt(0))
+            .buffer,
+        }));
+      } else throw Error("无法识别备份格式");
+      if (!confirm("恢复会替换当前工作空间，建议先导出备份。是否继续？"))
+        return;
+      await S.put(next, files);
+      state = next;
+      scope = "";
+      periods = null;
+      drafts = [];
+      render();
+      toast("备份已恢复");
+    } catch (err) {
+      toast("恢复失败：" + err.message);
+    }
+  };
+  window.addEventListener("unhandledrejection", (e) => {
+    toast("操作未完成：" + (e.reason?.message || e.reason));
+  });
+  S.load()
+    .then((result) => {
+      state = result.state;
+      storageWarning = result.warning;
+      render();
+    })
+    .catch((err) => {
+      $("#app").textContent = "工作空间读取失败：" + err.message;
+    });
 })();
