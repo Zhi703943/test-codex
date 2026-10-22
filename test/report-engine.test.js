@@ -482,6 +482,45 @@ test("auto period uses summary grain instead of inventing weekly breakdowns", ()
     b: { start: "2026-09-21", end: "2026-10-04" },
   });
 });
-test('complete report summary can contain shorter entity observation spans without splitting them',()=>{
- const r=report('summary',1,[row({start:'2026-10-05',end:'2026-10-18'}),row({start:'2026-10-10',end:'2026-10-18',target:'new target'})],{type:'target',daily:false,start:'2026-10-05',end:'2026-10-18'});assert.equal(E.select([r],'target',scope,{start:'2026-10-05',end:'2026-10-18'}).rows.length,2);assert.equal(E.select([r],'target',scope,{start:'2026-10-12',end:'2026-10-18'}).rows.length,0);
+test("complete report summary can contain shorter entity observation spans without splitting them", () => {
+  const r = report(
+    "summary",
+    1,
+    [
+      row({ start: "2026-10-05", end: "2026-10-18" }),
+      row({ start: "2026-10-10", end: "2026-10-18", target: "new target" }),
+    ],
+    { type: "target", daily: false, start: "2026-10-05", end: "2026-10-18" },
+  );
+  assert.equal(
+    E.select([r], "target", scope, { start: "2026-10-05", end: "2026-10-18" })
+      .rows.length,
+    2,
+  );
+  assert.equal(
+    E.select([r], "target", scope, { start: "2026-10-12", end: "2026-10-18" })
+      .rows.length,
+    0,
+  );
+});
+test("explicit monetary prefixes keep row currencies separate and reject mismatched fields", () => {
+  const d = E.inspect([
+    ["Date", "Customer Search Term", "Spend", "Sales"],
+    ["2026-10-01", "query", "US$10", "US$20"],
+    ["2026-10-01", "query", "CA$10", "CA$20"],
+  ]);
+  const m = {
+    store: "S",
+    site: "US",
+    currency: "USD",
+    adType: "SP",
+    attribution: "7天点击",
+  };
+  const r = E.prepare(d, m);
+  assert.deepEqual(
+    r.rows.map((x) => x.currency),
+    ["USD", "CAD"],
+  );
+  d.raw[0].Sales = "CA$20";
+  assert.throws(() => E.prepare(d, m), /币种冲突/);
 });

@@ -608,7 +608,28 @@
         throw Error(`第 ${i + 2} 行日期无法识别，不能用整表范围覆盖无效日期`);
       r.store = r.store || meta.store;
       r.site = canonicalSite(r.site || meta.site);
-      r.currency = r.currency || meta.currency;
+      const moneyCodes = [
+        ...new Set(
+          ["spend", "sales", "totalSales"]
+            .map((k) =>
+              map[k]
+                ? inferMoneyCurrency({ map: { [k]: map[k] }, raw: [src] })
+                : "",
+            )
+            .filter(Boolean),
+        ),
+      ];
+      if (moneyCodes.length > 1)
+        throw Error(
+          `第 ${i + 2} 行金额字段币种冲突，请在高级设置选择同一币种的字段`,
+        );
+      if (
+        r.currency &&
+        moneyCodes.length &&
+        r.currency.toUpperCase() !== moneyCodes[0]
+      )
+        throw Error(`第 ${i + 2} 行币种列与金额前缀冲突，请核对原始报表`);
+      r.currency = r.currency || moneyCodes[0] || meta.currency;
       r.adType = draft.type === "business" ? "业务" : r.adType || meta.adType;
       r.attribution =
         draft.type === "business"

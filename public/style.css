@@ -767,3 +767,90 @@ button:disabled {
     min-width: 1000px;
   }
 }
+.ready {
+  color: #3a7852;
+}
+.text-button {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  font-size: 12px;
+  color: #234f3e;
+  font-weight: 600;
+}
+.compact-table {
+  font-size: 12px;
+  min-width: 950px;
+  white-space: normal;
+}
+.compact-table td {
+  vertical-align: top;
+  min-width: 65px;
+}
+.compact-table td:first-child {
+  min-width: 190px;
+}
+.compact-table td:nth-child(2) {
+  min-width: 160px;
+}
+.compact-table td small {
+  font-size: 10px;
+  color: #859685;
+  line-height: 1.5;
+}
+.detail-row[hidden] {
+  display: none;
+}
+.detail-content {
+  padding: 20px;
+  background: #f7faf4;
+  max-width: 1100px;
+}
+.detail-content p {
+  font-size: 12px;
+  line-height: 1.9;
+}
+.highlight {
+  border-bottom: 1px solid #e2e9df;
+  padding: 20px 0;
+}
+.highlight:last-child {
+  border: 0;
+}
+.highlight h3 {
+  margin: 12px 0 6px;
+}
+.highlight p {
+  font-size: 12px;
+}
+.highlight button {
+  border: 0;
+  padding: 0;
+  text-align: left;
+  background: none;
+  font-size: 16px;
+  color: #244f3f;
+}
+.drop-zone {
+  margin-top: 18px;
+}
+.record small {
+  display: block;
+  margin-top: 8px;
+}
+#upload-advanced {
+  line-height: 1.9;
+}
+#ownership {
+  margin-bottom: 15px;
+}
+.detail-content table {
+  white-space: nowrap;
+}
+[data-row-key] {
+  cursor: pointer;
+}
+[data-row-key]:hover {
+  background: #f7faf3;
+}
