@@ -26,7 +26,8 @@
     pendingFiles = [],
     storageWarning = "",
     busy = false,
-    lastError = "";
+    lastError = "",
+    importNotices = [];
   let batchValues = {},
     periods = null,
     mode = "7",
@@ -166,7 +167,7 @@
         "直接上传后台原始报表。自动识别字段，先分析已有数据。",
         '<button class="primary" id="start-analysis">开始分析 →</button>',
       ) +
-      `<div class="steps workflow"><span class="current">01 收集表格</span><span>02 分析数据</span></div><section class="card drop-zone" id="dropzone"><div class="upload-icon">⇧</div><h2>拖入亚马逊后台原始报表</h2><p>支持多文件 CSV / TSV / XLSX，以及 ZIP 批量导入，无需先下载模板。</p><label class="button primary">选择多份报表<input id="upload" type="file" multiple accept=".csv,.tsv,.txt,.xlsx,.zip" hidden ${busy ? "disabled" : ""}></label><p class="note">${busy ? "正在读取文件，请稍候…" : "所有读取和分析在浏览器本地完成，不上传至服务器。旧式 .xls 暂不支持，请在 Excel 中另存为 .xlsx。"}</p></section>${lastError ? `<div class="alert" role="alert">${esc(lastError)}</div>` : ""}${drafts.length ? draftPanel() : ""}<section class="card" style="margin-top:22px">${head("数据收集清单", `${state.reports.length} 个报告版本 · 原始文件可追溯`)}<p class="note">同一分析范围、同一报告类型、同一天只采用最新启用版本的完整快照，不累加新旧上传。同一周期汇总必须与分析周期完全一致才使用，不拆分。不同报告类型独立分析，不叠加曝光与花费。上传不同筛选范围的报告时，请停用不适用版本，避免将部分导出误当完整快照。</p><div class="table-wrap"><table><thead><tr><th>文件 / 工作表</th><th>店铺 / 站点</th><th>报告类型</th><th>日期范围</th><th>行数 / 识别状态</th><th>可支持的分析 / 缺少内容</th><th>来源与版本</th></tr></thead><tbody>${
+      `<div class="steps workflow"><span class="current">01 收集表格</span><span>02 分析数据</span></div><section class="card drop-zone" id="dropzone"><div class="upload-icon">⇧</div><h2>拖入亚马逊后台原始报表</h2><p>支持多文件 CSV / TSV / XLSX，以及 ZIP 批量导入，无需先下载模板。</p><label class="button primary">选择多份报表<input id="upload" type="file" multiple accept=".csv,.tsv,.txt,.xlsx,.zip" hidden ${busy ? "disabled" : ""}></label><p class="note">${busy ? "正在读取文件，请稍候…" : "所有读取和分析在浏览器本地完成，不上传至服务器。旧式 .xls 暂不支持，请在 Excel 中另存为 .xlsx。"}</p></section>${importNotices.length ? `<div class="banner" role="status"><div>${importNotices.map(esc).join("<br>")}</div></div>` : ""}${lastError ? `<div class="alert" role="alert">${esc(lastError)}</div>` : ""}${drafts.length ? draftPanel() : ""}<section class="card" style="margin-top:22px">${head("数据收集清单", `${state.reports.length} 个报告版本 · 原始文件可追溯`)}<p class="note">同一分析范围、同一报告类型、同一天只采用最新启用版本的完整快照，不累加新旧上传。同一周期汇总必须与分析周期完全一致才使用，不拆分。不同报告类型独立分析，不叠加曝光与花费。上传不同筛选范围的报告时，请停用不适用版本，避免将部分导出误当完整快照。</p><div class="table-wrap"><table><thead><tr><th>文件 / 工作表</th><th>店铺 / 站点</th><th>报告类型</th><th>日期范围</th><th>行数 / 识别状态</th><th>可支持的分析 / 缺少内容</th><th>来源与版本</th></tr></thead><tbody>${
         [...state.reports]
           .sort((a, b) => b.seq - a.seq)
           .map((r) => {
@@ -252,11 +253,11 @@
   }
   function draftPanel() {
     const needed = (k) => drafts.some((d) => !detectedMeta(d)[k]);
-    return `<section class="card" style="margin-top:22px">${head("确认本批必要信息", `${drafts.length} 个工作表待入库`)}<form id="confirm-batch"><div class="form-grid">${needed("store") ? field("本批店铺（缺失时统一补充）", "store", "", "text", true) : ""}${needed("site") ? `<label>本批站点<select name="site" required>${options(["US", "CA", "UK", "DE", "FR", "IT", "ES", "JP", "AU", "MX", "其他"], "", "请选择")}</select></label>` : ""}${needed("currency") ? `<label>币种（缺失时补充）<select name="currency" required>${options(["USD", "CAD", "GBP", "EUR", "JPY", "AUD", "MXN", "CNY"], "", "请选择")}</select></label>` : ""}</div><p class="note">日期仅在文件不能识别时补充；常见字段已自动匹配。广告类型/归因口径若原报告未说明，请按生成报告时的设置确认。</p>${drafts
+    return `<section class="card" style="margin-top:22px">${head("确认本批必要信息", `${drafts.length} 个工作表待确认 · 尚未保存`)}<form id="confirm-batch"><p class="note">文件已读取，但尚未入库。补齐下方必要信息后，点击“确认并保存本批文件”，保存成功后才能分析。重新选择待确认文件会更新预览，不会当作已保存文件。</p><div class="form-grid">${needed("store") ? field("本批店铺（缺失时统一补充）", "store", "", "text", true) : ""}${needed("site") ? `<label>本批站点<select name="site" required>${options(["US", "CA", "UK", "DE", "FR", "IT", "ES", "JP", "AU", "MX", "其他"], "", "请选择")}</select></label>` : ""}${needed("currency") ? `<label>币种（缺失时补充）<select name="currency" required>${options(["USD", "CAD", "GBP", "EUR", "JPY", "AUD", "MXN", "CNY"], "", "请选择")}</select></label>` : ""}</div><p class="note">日期仅在文件不能识别时补充；常见字段已自动匹配。广告类型/归因口径若原报告未说明，请按生成报告时的设置确认。</p>${drafts
       .map((d, i) => {
         const m = detectedMeta(d),
           unknown = d.type === "unknown" || Object.keys(d.ambiguous).length;
-        return `<article class="draft"><h3>${esc(d.name)} / ${esc(d.sheet || "CSV")} <span class="tag">${d.raw.length} 行</span></h3><div class="form-grid"><label>报告类型<select data-draft="${i}" data-meta="type">${options(Object.entries(E.types), d.type)}</select></label>${!m.adType && d.type !== "business" ? `<label>广告类型<select name="adType-${i}" required>${options(["SP", "SB", "SD"], "", "请选择")}</select></label>` : `<p class="note">广告类型：${esc(m.adType || "业务报告")}</p>`}${d.type !== "business" ? field("归因口径（核对点击/视图窗口）", `attribution-${i}`, m.attribution === "文件内多值" ? "文件内多值" : m.attribution, "text", true) : '<p class="note">归因口径：业务报告</p>'}${!m.start ? field("开始日期", `start-${i}`, "", "date", true) : `<p class="note">起始 ${m.start}</p>`}${!m.end ? field("结束日期", `end-${i}`, "", "date", true) : `<p class="note">截止 ${m.end}</p>`}</div>${m.mixedWindows ? '<div class="alert">订单与销售额归因窗口不一致，请展开映射，选择同一窗口的字段后再导入。</div>' : ""}<p class="note">可支持：${capabilities(d.type)}。原始列名和前 3 行见下方预览。</p><details ${unknown || d.mappingOpen ? "open" : ""}><summary>${unknown ? "需要确认字段映射" : "查看/调整已识别字段与原始预览"}（规则会按列名保存）</summary><div class="mapping-grid">${Object.entries(
+        return `<article class="draft"><h3>${esc(d.name)} / ${esc(d.sheet || "CSV")} <span class="tag">${d.raw.length} 行 · 待确认，未保存</span></h3>${d.headerWarnings?.length ? `<div class="alert">${d.headerWarnings.map(esc).join("<br>")}</div>` : ""}<div class="form-grid"><label>报告类型<select data-draft="${i}" data-meta="type">${options(Object.entries(E.types), d.type)}</select></label>${!m.adType && d.type !== "business" ? `<label>广告类型<select name="adType-${i}" required>${options(["SP", "SB", "SD"], "", "请选择")}</select></label>` : `<p class="note">广告类型：${esc(m.adType || "业务报告")}</p>`}${d.type !== "business" ? field("归因口径（核对点击/视图窗口）", `attribution-${i}`, m.attribution === "文件内多值" ? "文件内多值" : m.attribution, "text", true) : '<p class="note">归因口径：业务报告</p>'}${!m.start ? field("开始日期", `start-${i}`, "", "date", true) : `<p class="note">起始 ${m.start}</p>`}${!m.end ? field("结束日期", `end-${i}`, "", "date", true) : `<p class="note">截止 ${m.end}</p>`}</div>${m.mixedWindows ? '<div class="alert">订单与销售额归因窗口不一致，请展开映射，选择同一窗口的字段后再导入。</div>' : ""}<p class="note">可支持：${capabilities(d.type)}。原始列名和前 3 行见下方预览。</p><details ${unknown || d.mappingOpen ? "open" : ""}><summary>${unknown ? "需要确认字段映射" : "查看/调整已识别字段与原始预览"}（规则会按列名保存）</summary><div class="mapping-grid">${Object.entries(
           E.labels,
         )
           .map(
@@ -315,6 +316,7 @@
     if (busy) return;
     busy = true;
     lastError = "";
+    importNotices = [];
     render();
     const errors = [];
     let total = 0;
@@ -373,18 +375,6 @@
       if (!["xlsx", "csv", "tsv", "txt"].includes(ext))
         throw Error("支持 CSV、TSV、XLSX、ZIP；旧式XLS请另存为XLSX");
       const fileId = await fingerprint(buffer);
-      const prev = state.reports.some((r) => r.fileId === fileId);
-      if (drafts.some((d) => d.fileId === fileId)) {
-        errors.push(name + "：本批重复文件，已跳过");
-        return;
-      }
-      if (prev) {
-        errors.push(
-          name +
-            "：已保存过同一原始文件，已跳过（如需新范围请先调整已保存版本）",
-        );
-        return;
-      }
       const sheets = [];
       if (ext === "xlsx") {
         const workbook = new ExcelJS.Workbook();
@@ -410,24 +400,54 @@
       let successes = 0;
       for (const { sheet, matrix } of sheets) {
         try {
+          const saved = state.reports.find(
+            (r) => r.fileId === fileId && r.sheet === sheet,
+          );
+          if (saved) {
+            importNotices.push(
+              `${name} / ${sheet}：此工作表已保存（版本 #${saved.seq}），未重复入库。其他未保存工作表仍会继续读取。`,
+            );
+            continue;
+          }
           let d = E.inspect(matrix);
-          const rule = state.rules[d.signature];
+          const existing = drafts.findIndex(
+            (x) => x.fileId === fileId && x.sheet === sheet,
+          );
+          const previous = existing >= 0 ? drafts[existing] : null;
+          const rule =
+            previous?.signature === d.signature
+              ? { map: previous.map, type: previous.type }
+              : state.rules[d.signature];
           if (rule) d = E.inspect(matrix, rule);
-          drafts.push({
+          const next = {
             ...d,
             name,
             sheet,
             fileId,
             parent,
             mappingOpen:
-              d.type === "unknown" || Object.keys(d.ambiguous).length > 0,
-          });
+              previous?.mappingOpen ||
+              d.type === "unknown" ||
+              Object.keys(d.ambiguous).length > 0 ||
+              !!d.headerWarnings?.length,
+          };
+          if (existing >= 0) {
+            drafts[existing] = next;
+            importNotices.push(
+              `${name} / ${sheet}：已更新待确认预览，尚未保存，请在下方确认入库。`,
+            );
+          } else drafts.push(next);
           successes++;
         } catch (err) {
           errors.push(name + "/" + sheet + "：" + err.message);
         }
       }
-      if (successes) pendingFiles.push({ id: fileId, name, buffer, parent });
+      if (successes) {
+        const f = { id: fileId, name, buffer, parent };
+        const at = pendingFiles.findIndex((x) => x.id === fileId);
+        if (at < 0) pendingFiles.push(f);
+        else pendingFiles[at] = f;
+      }
     }
   }
   async function confirmBatch(form) {
@@ -449,6 +469,7 @@
         start: m.start || values[`start-${i}`],
         end: m.end || values[`end-${i}`],
       });
+      result.issues.push(...(d.headerWarnings || []));
       const seen = new Set();
       result.rows = result.rows.filter((r) => {
         const k = JSON.stringify(
@@ -491,6 +512,8 @@
     drafts = [];
     pendingFiles = [];
     batchValues = {};
+    importNotices = [];
+    lastError = "";
     periods = null;
     toast("报表与原始文件已保存，可以开始分析。");
     render();
@@ -1276,7 +1299,15 @@
     if ($("#start-analysis"))
       $("#start-analysis").onclick = () => {
         if (!state.reports.some((r) => r.active !== false)) {
-          toast("请先保存至少一份可识别报表");
+          toast(
+            drafts.length
+              ? `已读取 ${drafts.length} 个工作表，但尚未保存。请先补齐下方信息并点击“确认并保存本批文件”。`
+              : "尚未保存报表，请先选择文件并确认入库。",
+          );
+          $("#confirm-batch")?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
           return;
         }
         page = "analyze";

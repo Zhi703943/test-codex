@@ -316,13 +316,25 @@
         index = i;
       }
     }
-    const headers =
-      matrix[index]?.map(
-        (v, i) => String(v ?? "").trim() || `未命名列${i + 1}`,
-      ) || [];
-    if (!headers.length) throw Error("空工作表");
-    if (new Set(headers).size !== headers.length)
-      throw Error("存在重复列名，请在源报告中区分后上传");
+    const originalHeaders = Array.from(
+      matrix[index] || [],
+      (v, i) => String(v ?? "").trim() || `未命名列${i + 1}`,
+    );
+    if (!originalHeaders.length) throw Error("空工作表");
+    const counts = new Map();
+    for (const h of originalHeaders) counts.set(h, (counts.get(h) || 0) + 1);
+    const used = new Set(),
+      headerWarnings = [];
+    const headers = originalHeaders.map((h, i) => {
+      let label = counts.get(h) > 1 ? `${h}〔原始第${i + 1}列〕` : h;
+      while (used.has(label)) label += "*";
+      used.add(label);
+      if (label !== h)
+        headerWarnings.push(
+          `重复列名“${h}”已标为“${label}”，请按预览确认需要的列；原文件未修改`,
+        );
+      return label;
+    });
     const raw = matrix
       .slice(index + 1)
       .filter((r) => r.some((v) => v != null && String(v).trim() !== ""))
@@ -339,6 +351,8 @@
       ),
     ];
     return {
+      originalHeaders,
+      headerWarnings,
       headerIndex: index,
       headers,
       raw,

@@ -339,3 +339,23 @@ test("UTF-16 exported tables decode before delimiter parsing", () => {
     ["2026-10-01", "5"],
   ]);
 });
+
+test("duplicate original headers retain every column without overwriting data", () => {
+  const d = E.inspect([
+    ["Date", "Customer Search Term", "Clicks", "Clicks", "Spend"],
+    ["2026-10-01", "water bottle", 5, 99, 10],
+  ]);
+  assert.equal(new Set(d.headers).size, 5);
+  assert.equal(d.map.clicks, undefined);
+  assert.equal(d.raw[0][d.headers[2]], 5);
+  assert.equal(d.raw[0][d.headers[3]], 99);
+  assert.equal(d.headerWarnings.length, 2);
+  const retry = E.inspect(
+    [
+      ["Date", "Customer Search Term", "Clicks", "Clicks", "Spend"],
+      ["2026-10-01", "water bottle", 5, 99, 10],
+    ],
+    { map: { clicks: d.headers[2] } },
+  );
+  assert.equal(retry.map.clicks, d.headers[2]);
+});

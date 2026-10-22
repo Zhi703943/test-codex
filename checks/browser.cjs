@@ -207,7 +207,9 @@ async function main() {
     buffer: Buffer.from(csv()),
   });
   await p.waitForFunction(() =>
-    document.querySelector("[role=alert]")?.textContent.includes("已保存过"),
+    document
+      .querySelector("[role=status].banner")
+      ?.textContent.includes("已保存"),
   );
   assert.equal(await p.locator("[data-toggle-report]").count(), 4);
   console.log("PASS 4 byte-identical reupload skipped");
