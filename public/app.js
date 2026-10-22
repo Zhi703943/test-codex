@@ -1,5 +1,6 @@
 (() => {
   "use strict";
+  const PARSER_VERSION = 2;
   const E = globalThis.ReportEngine,
     S = globalThis.WorkspaceStorage,
     $ = (s) => document.querySelector(s);
@@ -30,7 +31,7 @@
     importNotices = [];
   let batchValues = {},
     periods = null,
-    mode = "7",
+    mode = "auto",
     searchView = "summary",
     metric = "impressions",
     filter = "",
@@ -123,7 +124,15 @@
         .map((r) => r.end)
         .sort()
         .at(-1) || E.shift(today(), -1);
-    periods = E.periods(latest, Number(mode) || 7);
+    periods =
+      mode === "auto"
+        ? E.suggestedPeriods(
+            state.reports,
+            scope,
+            availableType(),
+            E.shift(today(), -1),
+          )
+        : E.periods(latest, Number(mode) || 7);
   }
   function render() {
     if (!state) return;
@@ -205,59 +214,80 @@
     );
   }
   function detectedMeta(d) {
-    const unique = (k) => {
-      const h = d.map[k];
-      if (!h) return "";
-      const values = d.raw.map((r) => String(r[h] ?? "").trim());
-      if (values.some((v) => !v)) return "";
-      const a = [...new Set(values)];
-      return a.length === 1 ? a[0] : a.length > 1 ? "文件内多值" : "";
-    };
-    const dates = d.map.date
-      ? d.raw
-          .map((r) => E.date(r[d.map.date]))
-          .filter(Boolean)
-          .sort()
-      : [];
-    const starts = d.map.start
-      ? d.raw
-          .map((r) => E.date(r[d.map.start]))
-          .filter(Boolean)
-          .sort()
-      : [];
-    const ends = d.map.end
-      ? d.raw
-          .map((r) => E.date(r[d.map.end]))
-          .filter(Boolean)
-          .sort()
-      : [];
-    const windows = [
-      ...new Set(
-        ["orders", "sales", "units"]
-          .map((k) => d.map[k]?.match(/(\d+)\s*(?:day|天)/i)?.[1])
-          .filter(Boolean),
-      ),
-    ];
-    return {
-      store: unique("store"),
-      site: unique("site"),
-      currency: unique("currency") || d.currencyHint,
-      adType: d.adType || unique("adType"),
-      attribution:
-        unique("attribution") ||
-        (windows.length === 1 ? `${windows[0]}天（归因触点待核实）` : ""),
-      start: dates[0] || starts[0] || "",
-      end: dates.at(-1) || ends.at(-1) || "",
-      mixedWindows: windows.length > 1,
-    };
+    return E.metadata(d);
   }
+  const siteCurrencies = {
+    US: "USD",
+    CA: "CAD",
+    UK: "GBP",
+    DE: "EUR",
+    FR: "EUR",
+    IT: "EUR",
+    ES: "EUR",
+    JP: "JPY",
+    AU: "AUD",
+    MX: "MXN",
+  };
   function draftPanel() {
     const needed = (k) => drafts.some((d) => !detectedMeta(d)[k]);
-    return `<section class="card" style="margin-top:22px">${head("确认本批必要信息", `${drafts.length} 个工作表待确认 · 尚未保存`)}<form id="confirm-batch"><p class="note">文件已读取，但尚未入库。补齐下方必要信息后，点击“确认并保存本批文件”，保存成功后才能分析。重新选择待确认文件会更新预览，不会当作已保存文件。</p><div class="form-grid">${needed("store") ? field("本批店铺（缺失时统一补充）", "store", "", "text", true) : ""}${needed("site") ? `<label>本批站点<select name="site" required>${options(["US", "CA", "UK", "DE", "FR", "IT", "ES", "JP", "AU", "MX", "其他"], "", "请选择")}</select></label>` : ""}${needed("currency") ? `<label>币种（缺失时补充）<select name="currency" required>${options(["USD", "CAD", "GBP", "EUR", "JPY", "AUD", "MXN", "CNY"], "", "请选择")}</select></label>` : ""}</div><p class="note">日期仅在文件不能识别时补充；常见字段已自动匹配。广告类型/归因口径若原报告未说明，请按生成报告时的设置确认。</p>${drafts
+    const metas = drafts.map(detectedMeta);
+    const sites = [
+      ...new Set(
+        metas.map((m) => m.site).filter((v) => v && v !== "文件内多值"),
+      ),
+    ];
+    const ranges = [
+      ...new Set(
+        metas.filter((m) => m.start && m.end).map((m) => m.start + "|" + m.end),
+      ),
+    ];
+    const suggested = ranges.length === 1 ? ranges[0].split("|") : [];
+    const defaults = {
+      site: sites.length === 1 ? sites[0] : "",
+      batchStart: suggested[0] || "",
+      batchEnd: suggested[1] || "",
+      ...(state.importDefaults || {}),
+      ...batchValues,
+    };
+    const missingDates = drafts.filter(
+      (d) => !detectedMeta(d).start || !detectedMeta(d).end,
+    );
+    return `<section class="card" style="margin-top:22px">${head("已自动读取本批报表", `${drafts.length} 个工作表 · 只补文件中缺失的信息`)}<form id="confirm-batch"><p class="note">报告类型、广告类型、日期、指标和归因窗口优先从原始文件读取。下方表格是识别结果，不需要逐份填写。点击保存后即可分析；文件没提供的口径标记为未知，不编造。</p><div class="form-grid">${needed("store") ? field("本批店铺（文件未提供，只填一次）", "store", defaults.store || "", "text", true) : ""}${needed("site") ? `<label>本批站点（文件未提供，只选一次）<select name="site" required>${options(["US", "CA", "UK", "DE", "FR", "IT", "ES", "JP", "AU", "MX", "其他"], defaults.site || "", "请选择")}</select></label>` : ""}${
+      needed("adType")
+        ? `<label>未标明广告类型的文件（可选）<select name="batchAdType">${options(
+            [
+              ["", "保留未注明，不影响导入"],
+              ["SP", "SP 商品推广"],
+              ["SB", "SB 品牌推广"],
+              ["SD", "SD 展示型推广"],
+            ],
+            defaults.batchAdType || "",
+          )}</select></label>`
+        : ""
+    }</div>${missingDates.length ? `<div class="alert">仅 ${missingDates.length} 个文件未包含统计日期；${suggested.length ? "已预填本批其他报表一致的范围，请确认这些无日期文件是否也是该范围，不是则修改。" : "请统一补充生成报告时选择的范围。"} 已识别的其他文件不会被覆盖。导出日期和广告活动创建日期不等于统计周期。</div><div class="form-grid">${needed("start") ? field("缺失文件的开始日期", "batchStart", defaults.batchStart || "", "date", true) : ""}${needed("end") ? field("缺失文件的结束日期", "batchEnd", defaults.batchEnd || "", "date", true) : ""}</div>` : ""}<details><summary>本批可选设置：币种 / 未注明归因口径</summary><div class="form-grid"><label>缺失币种时<select name="currency">${options([["", "自动按文件站点/本批站点识别"], ...["USD", "CAD", "GBP", "EUR", "JPY", "AUD", "MXN", "CNY"].map((x) => [x, x])], defaults.currency || "")}</select></label>${field("未注明归因的补充说明（可留空）", "batchAttribution", "", "text")}</div><p class="note">未注明归因时自动标记未知并按格式隔离，不要求手填。站点明确时仅推定记账币种，并在入库提示中记录；可在此更正。</p></details><div class="table-wrap"><table><thead><tr><th>原始文件 / 工作表</th><th>报告类型 / 广告类型</th><th>日期范围 / 来源</th><th>归因 / 可用字段</th><th>状态</th></tr></thead><tbody>${drafts
+      .map((d, i) => {
+        const m = detectedMeta(d);
+        return `<tr><td>${esc(d.name)}<small>${esc(d.sheet)}</small></td><td>${E.types[d.type]}<small>${esc(m.adType || "未注明，可导入")} · ${esc(m.adTypeSource)}</small></td><td>${esc(m.start || defaults.batchStart || "需补日期")} ~ ${esc(m.end || defaults.batchEnd || "需补日期")}<small>${esc(m.dateSource)}</small></td><td>${esc(m.attribution)}<small>${Object.keys(
+          d.map,
+        )
+          .map((k) => esc(E.labels[k]))
+          .join(
+            "、",
+          )}</small></td><td>${d.raw.length} 行 · 待保存${m.mixedWindows ? '<small class="status">归因窗口冲突，需检查映射</small>' : ""}</td></tr>`;
+      })
+      .join("")}</tbody></table></div>${drafts
       .map((d, i) => {
         const m = detectedMeta(d),
           unknown = d.type === "unknown" || Object.keys(d.ambiguous).length;
-        return `<article class="draft"><h3>${esc(d.name)} / ${esc(d.sheet || "CSV")} <span class="tag">${d.raw.length} 行 · 待确认，未保存</span></h3>${d.headerWarnings?.length ? `<div class="alert">${d.headerWarnings.map(esc).join("<br>")}</div>` : ""}<div class="form-grid"><label>报告类型<select data-draft="${i}" data-meta="type">${options(Object.entries(E.types), d.type)}</select></label>${!m.adType && d.type !== "business" ? `<label>广告类型<select name="adType-${i}" required>${options(["SP", "SB", "SD"], "", "请选择")}</select></label>` : `<p class="note">广告类型：${esc(m.adType || "业务报告")}</p>`}${d.type !== "business" ? field("归因口径（核对点击/视图窗口）", `attribution-${i}`, m.attribution === "文件内多值" ? "文件内多值" : m.attribution, "text", true) : '<p class="note">归因口径：业务报告</p>'}${!m.start ? field("开始日期", `start-${i}`, "", "date", true) : `<p class="note">起始 ${m.start}</p>`}${!m.end ? field("结束日期", `end-${i}`, "", "date", true) : `<p class="note">截止 ${m.end}</p>`}</div>${m.mixedWindows ? '<div class="alert">订单与销售额归因窗口不一致，请展开映射，选择同一窗口的字段后再导入。</div>' : ""}<p class="note">可支持：${capabilities(d.type)}。原始列名和前 3 行见下方预览。</p><details ${unknown || d.mappingOpen ? "open" : ""}><summary>${unknown ? "需要确认字段映射" : "查看/调整已识别字段与原始预览"}（规则会按列名保存）</summary><div class="mapping-grid">${Object.entries(
+        return `<article class="draft"><h3>${esc(d.name)} / ${esc(d.sheet)} <span class="tag">${d.raw.length} 行 · 待确认，未保存</span></h3>${d.headerWarnings?.length ? `<div class="alert">${d.headerWarnings.map(esc).join("<br>")}</div>` : ""}<details ${unknown || d.mappingOpen ? "open" : ""}><summary>${unknown ? "仅此工作表需确认：未识别类型或有歧义字段" : "自动识别已完成 · 查看原始预览或更正（可跳过）"}</summary><div class="form-grid"><label>报告类型<select data-draft="${i}" data-meta="type">${options(Object.entries(E.types), d.type)}</select></label><label>更正广告类型<select name="adType-${i}">${options(
+          [
+            ["", `自动：${m.adType || "未注明"}`],
+            ["SP", "SP"],
+            ["SB", "SB"],
+            ["SD", "SD"],
+          ],
+          "",
+        )}</select></label>${field("更正归因口径（留空自动识别）", `attribution-${i}`, "")}${field("更正缺失的开始日期（可选）", `start-${i}`, "", "date")}${field("更正缺失的结束日期（可选）", `end-${i}`, "", "date")}</div><p class="note">${capabilities(d.type)}。原始数据预览如下；不必逐列填写，只有需要更正的字段才调整。</p><div class="mapping-grid">${Object.entries(
           E.labels,
         )
           .map(
@@ -282,7 +312,7 @@
       })
       .join(
         "",
-      )}<button class="primary" type="submit">确认并保存本批文件</button><span class="note"> 不会覆盖旧文件，分析采用最新适用版本。</span></form></section>`;
+      )}<button class="primary" type="submit">确认并保存本批文件</button><span class="note"> 保存后点击“开始分析”。店铺/站点选择会记住，下次自动带入。</span></form></section>`;
   }
   async function fingerprint(buffer) {
     if (crypto.subtle) {
@@ -400,10 +430,10 @@
       let successes = 0;
       for (const { sheet, matrix } of sheets) {
         try {
-          const saved = state.reports.find(
-            (r) => r.fileId === fileId && r.sheet === sheet,
-          );
-          if (saved) {
+          const saved = state.reports
+            .filter((r) => r.fileId === fileId && r.sheet === sheet)
+            .sort((a, b) => b.seq - a.seq)[0];
+          if (saved && saved.parserVersion === PARSER_VERSION) {
             importNotices.push(
               `${name} / ${sheet}：此工作表已保存（版本 #${saved.seq}），未重复入库。其他未保存工作表仍会继续读取。`,
             );
@@ -416,21 +446,30 @@
           const previous = existing >= 0 ? drafts[existing] : null;
           const rule =
             previous?.signature === d.signature
-              ? { map: previous.map, type: previous.type }
+              ? {
+                  map: previous.map,
+                  type: previous.type,
+                  userType: previous.userType,
+                }
               : state.rules[d.signature];
           if (rule) d = E.inspect(matrix, rule);
           const next = {
             ...d,
+            replaces: saved?.id,
             name,
             sheet,
             fileId,
             parent,
+            userType: rule?.userType || false,
             mappingOpen:
               previous?.mappingOpen ||
               d.type === "unknown" ||
-              Object.keys(d.ambiguous).length > 0 ||
-              !!d.headerWarnings?.length,
+              Object.keys(d.ambiguous).length > 0,
           };
+          if (saved && saved.parserVersion !== PARSER_VERSION)
+            importNotices.push(
+              `${name} / ${sheet}：识别规则已升级，已重新读取；保存后替换旧识别版本，历史文件仍保留。`,
+            );
           if (existing >= 0) {
             drafts[existing] = next;
             importNotices.push(
@@ -463,21 +502,32 @@
       const result = E.prepare(d, {
         store: m.store || values.store,
         site: m.site || values.site,
-        currency: m.currency || values.currency,
-        adType: m.adType || values[`adType-${i}`],
-        attribution: values[`attribution-${i}`] || m.attribution,
-        start: m.start || values[`start-${i}`],
-        end: m.end || values[`end-${i}`],
+        currency:
+          m.currency ||
+          values.currency ||
+          siteCurrencies[m.site || values.site],
+        adType:
+          values[`adType-${i}`] || m.adType || values.batchAdType || "未注明",
+        attribution:
+          values[`attribution-${i}`] ||
+          (/未注明/.test(m.attribution) ? values.batchAttribution : "") ||
+          m.attribution,
+        start: m.start || values[`start-${i}`] || values.batchStart,
+        end: m.end || values[`end-${i}`] || values.batchEnd,
       });
       result.issues.push(...(d.headerWarnings || []));
-      const seen = new Set();
-      result.rows = result.rows.filter((r) => {
-        const k = JSON.stringify(
-          r,
-          Object.keys(r)
-            .filter((k) => k !== "line")
-            .sort(),
+      if (!m.currency && !values.currency)
+        result.issues.push("币种依据站点推定，请核对是否使用其他记账币种");
+      if (/未注明/.test(m.attribution))
+        result.issues.push(
+          "原报告未提供归因窗口，按报表格式隔离；不可认定为7天或14天归因",
         );
+      if (!m.adType && !values.batchAdType)
+        result.issues.push("原报告未注明广告类型，作为未知广告类型独立分析");
+      const seen = new Set();
+      result.rows = result.rows.filter((r, index) => {
+        // Only identical original rows are duplicates; unmapped source dimensions may differ.
+        const k = JSON.stringify(d.raw[index]);
         if (seen.has(k)) {
           result.issues.push(
             "文件内完全重复行已去重，请核实源报告是否有重复导出",
@@ -489,6 +539,8 @@
       });
       prepared.push({
         ...result,
+        parserVersion: PARSER_VERSION,
+        replaces: d.replaces,
         id: id(),
         name: d.name,
         sheet: d.sheet,
@@ -504,9 +556,25 @@
       });
     }
     const next = structuredClone(state);
+    for (const r of prepared)
+      if (r.replaces)
+        for (const old of next.reports)
+          if (old.fileId === r.fileId && old.sheet === r.sheet)
+            old.active = false;
     next.reports.push(...prepared);
+    next.importDefaults = {
+      ...(state.importDefaults || {}),
+      store: values.store || state.importDefaults?.store || "",
+      site: values.site || state.importDefaults?.site || "",
+      currency: values.currency || "",
+      batchAdType: values.batchAdType || "",
+    };
     for (const d of drafts)
-      next.rules[d.signature] = { map: d.map, type: d.type };
+      next.rules[d.signature] = {
+        map: d.map,
+        type: d.type,
+        userType: !!d.userType,
+      };
     await S.put(next, pendingFiles);
     state = next;
     drafts = [];
@@ -520,7 +588,23 @@
   }
   function scopeControls() {
     const keys = scopes();
-    if (!keys.includes(scope)) scope = keys[0] || "";
+    if (!keys.includes(scope)) {
+      const primary = [
+        "target",
+        "search",
+        "placement",
+        "product",
+        "campaign",
+        "business",
+      ]
+        .map((t) =>
+          state.reports.find(
+            (r) => r.active !== false && r.type === t && r.rows.length,
+          ),
+        )
+        .find(Boolean);
+      scope = primary ? E.scopeKey(primary.rows[0]) : keys[0] || "";
+    }
     if (!periods) initPeriods();
     const p = periods;
     return `<section class="card controls"><div class="toolbar"><label>分析范围<select id="scope">${options(
@@ -529,6 +613,7 @@
       "请选择范围",
     )}</select></label><label>对比模式<select id="mode">${options(
       [
+        ["auto", "自动：按报告可用粒度选择周期"],
         ["7", "最近完整7天 vs 此前7天"],
         ["14", "最近完整14天 vs 此前14天"],
         ["custom", "自定义两个周期"],
@@ -1318,8 +1403,10 @@
         (el.onchange = () => {
           const d = drafts[Number(el.dataset.draft)];
           d.mappingOpen = true;
-          if (el.dataset.meta === "type") d.type = el.value;
-          else if (el.value) d.map[el.dataset.mapField] = el.value;
+          if (el.dataset.meta === "type") {
+            d.type = el.value;
+            d.userType = true;
+          } else if (el.value) d.map[el.dataset.mapField] = el.value;
           else delete d.map[el.dataset.mapField];
           render();
         }),
@@ -1331,6 +1418,8 @@
           render();
         }),
     );
+    if ($('#confirm-batch [name="site"]'))
+      $('#confirm-batch [name="site"]').onchange = () => render();
     if ($("#confirm-batch"))
       $("#confirm-batch").onsubmit = (e) => {
         e.preventDefault();
@@ -1410,6 +1499,7 @@
           group = "";
           filter = "";
           metric = tab === "business" ? "totalSales" : "impressions";
+          if (mode === "auto") initPeriods();
           if (scope) {
             const current = JSON.parse(scope),
               wantBusiness = tab === "business";

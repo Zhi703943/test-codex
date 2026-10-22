@@ -359,3 +359,129 @@ test("duplicate original headers retain every column without overwriting data", 
   );
   assert.equal(retry.map.clicks, d.headers[2]);
 });
+
+test("metadata reads ad product from explicit worksheet names without using names to classify report type", () => {
+  const d = E.inspect([
+    [
+      "开始日期",
+      "结束日期",
+      "投放",
+      "客户搜索词",
+      "7天总订单数(#)",
+      "7天总销售额",
+    ],
+    ["2026-10-05", "2026-10-18", "term", "query", 1, 20],
+  ]);
+  d.sheet = "商品推广_搜索词_报告";
+  d.name = "1 (2).xlsx";
+  const m = E.metadata(d);
+  assert.equal(d.type, "search");
+  assert.equal(m.adType, "SP");
+  assert.equal(m.start, "2026-10-05");
+  assert.equal(m.end, "2026-10-18");
+  assert.match(m.attribution, /7天/);
+  d.sheet = "品牌推广_搜索词_报告";
+  assert.equal(E.metadata(d).adType, "SB");
+});
+test("real placement label, currency prefixes and advertised SKU aliases are supported", () => {
+  const d = E.inspect([
+    [
+      "开始日期",
+      "结束日期",
+      "广告活动名称",
+      "国家/地区",
+      "放置",
+      "花费",
+      "7天总订单数(#)",
+    ],
+    ["2026-10-05", "2026-10-18", "C", "美国", "搜索结果顶部", 5, 1],
+  ]);
+  assert.equal(d.type, "placement");
+  assert.equal(E.metadata(d).site, "US");
+  assert.equal(E.number("US$1,234.56"), 1234.56);
+  assert.equal(E.number("CA$123.45"), 123.45);
+  assert.equal(E.detect(["广告SKU"]).map.sku, "广告SKU");
+});
+test("SB total sales are not confused with click-only sales from same attribution window", () => {
+  const d = E.detect([
+    "客户搜索词",
+    "14天总销售额",
+    "14 天内总销售额 -（点击）",
+    "14天总订单数(#)",
+  ]);
+  assert.equal(d.map.sales, "14天总销售额");
+  assert.equal(d.map.orders, "14天总订单数(#)");
+});
+test("campaign manager targeting mode and lifecycle dates are never keyword or reporting dates", () => {
+  const d = E.inspect([
+    [
+      "广告活动名称",
+      "广告活动编号",
+      "类型",
+      "投放",
+      "广告活动开始日期",
+      "广告活动结束日期",
+      "广告活动预算金额",
+      "投放广告活动的国家/地区",
+      "总成本",
+      "购买量",
+      "销售额",
+    ],
+    [
+      "C",
+      "c",
+      "SP",
+      "MANUAL",
+      "2025-01-01",
+      "",
+      "US$5",
+      "美国",
+      "US$10",
+      1,
+      "US$20",
+    ],
+  ]);
+  assert.equal(d.type, "campaign");
+  assert.equal(d.map.target, undefined);
+  assert.equal(d.map.targetingMode, "投放");
+  const m = E.metadata(d);
+  assert.equal(m.start, "");
+  assert.equal(m.end, "");
+  assert.equal(m.currency, "USD");
+});
+test("export filenames with one date do not establish a reporting window", () => {
+  const d = E.inspect([
+    ["（子）ASIN", "会话数 - 总计", "已订购商品销售额"],
+    ["A", 10, "US$20"],
+  ]);
+  d.name = "BusinessReport-18-10-26.csv";
+  const m = E.metadata(d);
+  assert.equal(m.start, "");
+  assert.equal(m.end, "");
+  assert.equal(m.currency, "USD");
+  assert.equal(m.attribution, "业务报告");
+});
+test("unknown attribution is explicit and does not require fabricated manual values", () => {
+  const d = E.inspect([
+    ["Customer Search Term", "Clicks", "Spend"],
+    ["query", 10, 5],
+  ]);
+  const m = E.metadata(d);
+  assert.match(m.attribution, /未注明归因/);
+  assert.equal(m.adType, "");
+});
+test("auto period uses summary grain instead of inventing weekly breakdowns", () => {
+  const r = report(
+    "summary",
+    1,
+    [row({ start: "2026-10-05", end: "2026-10-18" })],
+    { type: "target", daily: false, start: "2026-10-05", end: "2026-10-18" },
+  );
+  assert.deepEqual(E.suggestedPeriods([r], scope, "target", "2026-10-21"), {
+    a: { start: "2026-10-05", end: "2026-10-18" },
+    b: { start: "2026-09-21", end: "2026-10-04" },
+  });
+});
+test('complete report summary can contain shorter entity observation spans without splitting them',()=>{
+ const r=report('summary',1,[row({start:'2026-10-05',end:'2026-10-18'}),row({start:'2026-10-10',end:'2026-10-18',target:'new target'})],{type:'target',daily:false,start:'2026-10-05',end:'2026-10-18'});assert.equal(E.select([r],'target',scope,{start:'2026-10-05',end:'2026-10-18'}).rows.length,2);assert.equal(E.select([r],'target',scope,{start:'2026-10-12',end:'2026-10-18'}).rows.length,0);
+});

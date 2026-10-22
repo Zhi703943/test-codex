@@ -17,6 +17,7 @@
     term: "顾客搜索词",
     match: "匹配方式",
     placement: "广告位置",
+    targetingMode: "投放方式（非关键词）",
     asin: "广告ASIN",
     purchasedAsin: "购买ASIN",
     sku: "SKU",
@@ -44,6 +45,7 @@
       "广告类型",
       "广告产品",
       "广告产品类型",
+      "类型",
     ],
     attribution: ["attribution", "attribution window", "归因口径"],
     campaign: ["campaign name", "campaign", "广告活动名称", "广告活动"],
@@ -73,7 +75,7 @@
       "实际搜索词或商品asin",
     ],
     match: ["match type", "匹配类型", "匹配方式", "原匹配方式"],
-    placement: ["placement", "广告位", "广告位置", "投放位置"],
+    placement: ["placement", "广告位", "广告位置", "投放位置", "放置"],
     asin: [
       "advertised asin",
       "广告asin",
@@ -87,10 +89,10 @@
       "asin",
     ],
     purchasedAsin: ["purchased asin", "购买asin"],
-    sku: ["advertised sku", "推广的sku", "sku", "seller sku"],
+    sku: ["advertised sku", "推广的sku", "sku", "广告SKU", "seller sku"],
     impressions: ["impressions", "曝光量", "展示量", "曝光", "展示次数"],
     clicks: ["clicks", "点击量", "点击次数", "点击"],
-    spend: ["spend", "cost", "花费", "支出", "广告花费"],
+    spend: ["spend", "cost", "花费", "支出", "广告花费", "总成本"],
     orders: [
       "orders",
       "total orders",
@@ -128,6 +130,12 @@
       "商品会话百分比总计",
     ],
   };
+  aliases.placement.push("放置");
+  aliases.spend.push("总成本");
+  aliases.orders.push("购买量");
+  aliases.sku.push("广告SKU");
+  aliases.adType.push("类型");
+  aliases.site.push("投放广告活动的国家/地区");
   const normalize = (s) =>
     String(s ?? "")
       .toLowerCase()
@@ -170,7 +178,16 @@
           )
             candidates.push(h);
         }
-      const unique = [...new Set(candidates)];
+      let unique = [...new Set(candidates)];
+      if (["orders", "sales", "units"].includes(key) && unique.length > 1) {
+        const plain = unique.filter(
+          (h) => !/点击|click|view|浏览|展示|归因触点/i.test(h),
+        );
+        const windows = new Set(
+          unique.map((h) => h.match(/(\d+)\s*(?:day|天|日)/i)?.[1] || ""),
+        );
+        if (plain.length === 1 && windows.size === 1) unique = plain;
+      }
       if (unique.length === 1) map[key] = unique[0];
       else if (unique.length > 1) {
         ambiguous[key] = unique;
@@ -178,6 +195,17 @@
     }
     for (const [k, h] of Object.entries(rules))
       if (headers.includes(h)) map[k] = h;
+    const campaignAdmin =
+      !!map.campaign &&
+      headers.some((h) => /广告活动预算|campaign budget/i.test(h)) &&
+      !map.term &&
+      !map.group &&
+      !map.groupId &&
+      !map.match;
+    if (campaignAdmin && map.target) {
+      map.targetingMode = map.target;
+      delete map.target;
+    }
     let type =
       map.sessions || map.totalSales
         ? "business"
@@ -284,6 +312,10 @@
     if (typeof v === "number") return Number.isFinite(v) ? v : null;
     let s = String(v)
       .trim()
+      .replace(
+        /^(?:US\$|CA\$|AU\$|C\$|A\$|USD|CAD|AUD|EUR|GBP|JPY|CNY|MXN)\s*/i,
+        "",
+      )
       .replace(/[$€£¥￥\s%％]/g, "");
     if (/^-?\d{1,3}(\.\d{3})*,\d{1,2}$/.test(s))
       s = s.replaceAll(".", "").replace(",", ".");
@@ -351,6 +383,7 @@
       ),
     ];
     return {
+      preamble: matrix.slice(0, index),
       originalHeaders,
       headerWarnings,
       headerIndex: index,
@@ -358,10 +391,175 @@
       raw,
       map: det.map,
       ambiguous: det.ambiguous,
-      type: rule.type || det.type,
+      type: rule.userType
+        ? rule.type
+        : det.type !== "unknown"
+          ? det.type
+          : rule.type || det.type,
       signature: JSON.stringify(headers.map(normalize)),
       adType: inferAd(raw, det.map),
       currencyHint: currencies.length === 1 ? currencies[0] : "",
+    };
+  }
+  function inferMoneyCurrency(d) {
+    const values = ["spend", "sales", "totalSales"].flatMap((k) =>
+      d.map[k] ? d.raw.slice(0, 20).map((r) => String(r[d.map[k]])) : [],
+    );
+    const found = [
+      ...new Set(
+        values
+          .map((v) =>
+            /^US\$/i.test(v)
+              ? "USD"
+              : /^CA\$|^C\$/i.test(v)
+                ? "CAD"
+                : /^AU\$|^A\$/i.test(v)
+                  ? "AUD"
+                  : /^(USD|CAD|AUD|EUR|GBP|JPY|CNY|MXN)/i
+                      .exec(v)?.[1]
+                      ?.toUpperCase(),
+          )
+          .filter(Boolean),
+      ),
+    ];
+    return found.length === 1 ? found[0] : "";
+  }
+  function canonicalSite(v) {
+    return (
+      {
+        美国: "US",
+        "United States": "US",
+        "Amazon.com": "US",
+        加拿大: "CA",
+        Canada: "CA",
+        英国: "UK",
+        "United Kingdom": "UK",
+        德国: "DE",
+        法国: "FR",
+        意大利: "IT",
+        西班牙: "ES",
+        日本: "JP",
+        澳大利亚: "AU",
+        墨西哥: "MX",
+      }[v] || v
+    );
+  }
+  function metadata(d) {
+    const unique = (k) => {
+      const h = d.map[k];
+      if (!h) return "";
+      const a = d.raw.map((r) => String(r[h] ?? "").trim());
+      if (a.some((v) => !v)) return "";
+      const vals = [...new Set(a)];
+      return vals.length === 1 ? vals[0] : vals.length > 1 ? "文件内多值" : "";
+    };
+    const datesFor = (k) =>
+      d.map[k]
+        ? d.raw
+            .map((r) => date(r[d.map[k]]))
+            .filter(Boolean)
+            .sort()
+        : [];
+    const daily = datesFor("date"),
+      starts = datesFor("start"),
+      ends = datesFor("end");
+    const text = [d.sheet || "", d.name || ""].join(" "),
+      adHints = [];
+    if (
+      /商品推广|sponsored[ _-]*products|(?:^|[^a-z])SP(?:[^a-z]|$)/i.test(text)
+    )
+      adHints.push("SP");
+    if (/品牌推广|sponsored[ _-]*brands|(?:^|[^a-z])SB(?:[^a-z]|$)/i.test(text))
+      adHints.push("SB");
+    if (
+      /展示型推广|sponsored[ _-]*display|(?:^|[^a-z])SD(?:[^a-z]|$)/i.test(text)
+    )
+      adHints.push("SD");
+    const adType =
+      unique("adType") ||
+      inferAd(d.raw, d.map) ||
+      (new Set(adHints).size === 1 ? adHints[0] : "");
+    const windows = [
+      ...new Set(
+        ["orders", "sales", "units"]
+          .map((k) => d.map[k]?.match(/(\d+)\s*(?:day|天|日)/i)?.[1])
+          .filter(Boolean),
+      ),
+    ];
+    const preamble = (d.preamble || []).flat().map(String).join(" ");
+    const ranges = (t) =>
+      [...t.matchAll(/\d{4}[-/年]\d{1,2}[-/月]\d{1,2}日?/g)]
+        .map((m) => date(m[0]))
+        .filter(Boolean);
+    const introDates = ranges(preamble),
+      nameDates = ranges(d.name || "");
+    // Only two explicit ordered dates establish a range; never use creation timestamps.
+    const hint =
+      introDates.length === 2 && introDates[0] <= introDates[1]
+        ? introDates
+        : nameDates.length === 2 && nameDates[0] <= nameDates[1]
+          ? nameDates
+          : [];
+    const monetaryHeaders = ["spend", "sales", "totalSales"]
+      .map((k) => d.map[k] || "")
+      .join(" ");
+    const money = [
+      ...new Set(
+        (
+          monetaryHeaders.match(/\b(?:USD|CAD|EUR|GBP|JPY|AUD|CNY|MXN)\b/gi) ||
+          []
+        ).map((x) => x.toUpperCase()),
+      ),
+    ];
+    const fmtKey = d.signature || JSON.stringify(d.headers);
+    let h = 2166136261;
+    for (const c of fmtKey) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+    return {
+      store: unique("store"),
+      site: canonicalSite(unique("site")),
+      currency:
+        unique("currency") || d.currencyHint || inferMoneyCurrency(d) || "",
+      adType: d.type === "business" ? "业务" : adType,
+      attribution:
+        d.type === "business"
+          ? "业务报告"
+          : unique("attribution") ||
+            (windows.length === 1
+              ? `${windows[0]}天（归因触点待核实）`
+              : `未注明归因（同格式隔离 ${(h >>> 0).toString(16)}）`),
+      attributionSource:
+        d.type === "business"
+          ? "业务报告独立口径"
+          : unique("attribution")
+            ? "文件字段"
+            : windows.length === 1
+              ? "订单/销售额列名"
+              : "文件未提供，标记未知，不推断窗口",
+      adTypeSource:
+        d.type === "business"
+          ? "业务报告字段"
+          : unique("adType") || inferAd(d.raw, d.map)
+            ? "文件字段"
+            : adType
+              ? "工作表/文件中的明确广告产品名称"
+              : "文件未提供",
+      start: daily[0] || starts[0] || hint[0] || "",
+      end: daily.at(-1) || ends.at(-1) || hint[1] || "",
+      dateSource: daily.length
+        ? "日期列（每日明细）"
+        : starts.length || ends.length
+          ? "开始/结束日期列"
+          : introDates.length === 2
+            ? "报告标题中的明确日期范围"
+            : nameDates.length === 2
+              ? "文件名中的明确日期范围"
+              : "文件未提供",
+      mixedWindows:
+        windows.length > 1 ||
+        (!!d.map.orders &&
+          !!d.map.sales &&
+          /点击|click/i.test(d.map.orders) !== /点击|click/i.test(d.map.sales)),
+      currencyConflict: money.length > 1,
     };
   }
   const numeric = [
@@ -409,7 +607,7 @@
       if (map.date && !dt)
         throw Error(`第 ${i + 2} 行日期无法识别，不能用整表范围覆盖无效日期`);
       r.store = r.store || meta.store;
-      r.site = r.site || meta.site;
+      r.site = canonicalSite(r.site || meta.site);
       r.currency = r.currency || meta.currency;
       r.adType = draft.type === "business" ? "业务" : r.adType || meta.adType;
       r.attribution =
@@ -502,6 +700,41 @@
       b: { start: shift(end, 1 - n * 2), end: shift(end, -n) },
     };
   }
+  function suggestedPeriods(reports, scope, type, lastComplete) {
+    const sources = reports
+      .filter(
+        (r) =>
+          r.active !== false &&
+          r.type === type &&
+          r.rows.some((x) => scopeKey(x) === scope) &&
+          r.end <= lastComplete,
+      )
+      .sort((a, b) => b.end.localeCompare(a.end) || b.seq - a.seq);
+    const latest = sources[0];
+    if (latest && !latest.daily) {
+      const n =
+        Math.round(
+          (Date.parse(latest.end) - Date.parse(latest.start)) / 86400000,
+        ) + 1;
+      return {
+        a: { start: latest.start, end: latest.end },
+        b: { start: shift(latest.start, -n), end: shift(latest.start, -1) },
+      };
+    }
+    const all = reports
+      .filter((r) => r.active !== false)
+      .flatMap((r) => r.rows)
+      .filter((r) => scopeKey(r) === scope && r.end <= lastComplete);
+    return periods(
+      latest?.end ||
+        all
+          .map((r) => r.end)
+          .sort()
+          .at(-1) ||
+        lastComplete,
+      7,
+    );
+  }
   function days(a, b) {
     const result = [];
     for (let s = a; s <= b; s = shift(s, 1)) {
@@ -536,7 +769,7 @@
         !r.daily &&
         r.start === period.start &&
         r.end === period.end &&
-        r.rows.every((x) => x.start === period.start && x.end === period.end),
+        r.rows.every((x) => x.start >= period.start && x.end <= period.end),
     );
     const latestDailySeq = Math.max(
       -1,
@@ -744,10 +977,13 @@
     number,
     inspect,
     prepare,
+    metadata,
+    canonicalSite,
     scopeKey,
     metrics,
     ratio,
     periods,
+    suggestedPeriods,
     shift,
     days,
     select,

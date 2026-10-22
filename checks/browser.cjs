@@ -162,7 +162,7 @@ async function main() {
     );
   }, csv());
   await p
-    .getByRole("heading", { name: "确认本批必要信息", exact: true })
+    .getByRole("heading", { name: "已自动读取本批报表", exact: true })
     .waitFor();
   await p.locator("#upload").setInputFiles([
     {
@@ -181,16 +181,12 @@ async function main() {
       await f.locator("[name=store]").fill("Sample Store");
     if (await f.locator("[name=site]").count())
       await f.locator("[name=site]").selectOption("US");
-    if (await f.locator("[name=currency]").count())
-      await f.locator("[name=currency]").selectOption("USD");
-    for (const s of await f.locator('select[name^="adType-"]').all())
-      await s.selectOption("SP");
-    for (const s of await f.locator('input[name^="attribution-"]').all())
-      await s.fill("7天（归因触点待核实）");
-    for (const s of await f.locator('input[name^="start-"]').all())
-      await s.fill("2026-10-08");
-    for (const s of await f.locator('input[name^="end-"]').all())
-      await s.fill("2026-10-14");
+    if (await f.locator("[name=batchAdType]").count())
+      await f.locator("[name=batchAdType]").selectOption("SP");
+    if (await f.locator("[name=batchStart]").count())
+      await f.locator("[name=batchStart]").fill("2026-10-08");
+    if (await f.locator("[name=batchEnd]").count())
+      await f.locator("[name=batchEnd]").fill("2026-10-14");
     await f
       .getByRole("button", { name: "确认并保存本批文件", exact: true })
       .click();
@@ -250,7 +246,7 @@ async function main() {
     mimeType: "text/csv",
     buffer: Buffer.from(csv(true)),
   });
-  await p.getByRole("heading", { name: "确认本批必要信息" }).waitFor();
+  await p.getByRole("heading", { name: "已自动读取本批报表" }).waitFor();
   await completeBatch();
   await p.getByRole("button", { name: "开始分析 →" }).click();
   await p.getByRole("button", { name: "顾客搜索词变化", exact: true }).click();

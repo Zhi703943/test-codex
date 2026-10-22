@@ -161,6 +161,7 @@ const { chromium } = load("playwright"),
   await page.locator(".draft").waitFor();
   assert.equal(await page.locator(".draft").count(), 1);
   assert.match(await page.locator(".draft").innerText(), /Sheet B/);
+  await page.locator(".draft > details > summary").click();
   const select = page.locator("[data-map-field=clicks]");
   const clickHeader = await select
     .locator("option")
